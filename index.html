@@ -1,382 +1,486 @@
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Seoul Trip 2024 (分享版)</title>
-<!-- React & ReactDOM -->
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<!-- Babel for JSX -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<!-- Tailwind CSS -->
-<script src="https://cdn.tailwindcss.com"></script>
-<!-- Inline Styles for Hide Scrollbar -->
-<style>
-       .no-scrollbar::-webkit-scrollbar {
-           display: none;
-       }
-       .no-scrollbar {
-           -ms-overflow-style: none;
-           scrollbar-width: none;
-       }
-       body {
-           /* Fix for mobile tap delay */
-           -webkit-tap-highlight-color: transparent;
-       }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>首爾行程規劃器 (可編輯)</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase JS SDK (必須在運行時引入) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, doc, setDoc, onSnapshot, updateDoc, 
+            collection, query, getDoc, getDocs, setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 設定 Firebase Debug Level (開發用)
+        setLogLevel('debug');
+
+        // 檢查全局變數
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            window.db = getFirestore(app);
+            window.auth = getAuth(app);
+            
+            // 登入邏輯
+            const signInUser = async () => {
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(window.auth, initialAuthToken);
+                        console.log("Firebase: Signed in with custom token.");
+                    } else {
+                        await signInAnonymously(window.auth);
+                        console.log("Firebase: Signed in anonymously.");
+                    }
+                } catch (error) {
+                    console.error("Firebase Auth Error:", error);
+                }
+            };
+            
+            // 確保 authReady 狀態更新
+            onAuthStateChanged(window.auth, (user) => {
+                if (user) {
+                    window.globalUserId = user.uid;
+                } else {
+                    window.globalUserId = crypto.randomUUID(); // Fallback for unauthenticated
+                }
+                // 發送事件通知 React Auth 已準備好
+                window.dispatchEvent(new CustomEvent('authReady', { detail: { userId: window.globalUserId } }));
+            });
+
+            signInUser();
+        } else {
+            console.error("Firebase Config missing. Data persistence disabled.");
+        }
+        
+        window.appId = appId;
+    </script>
+
+    <!-- Inline Styles for Mobile and Custom Scrollbar Hide -->
+    <style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Fade-in animation for smoother transitions */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+    </style>
 </head>
 <body class="bg-slate-50">
-<div id="root"></div>
-<script type="text/babel">
-       const { useState } = React;
-       // Icons Components (Embedded for portability)
-       const Icons = {
-           MapPin: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>,
-           Utensils: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>,
-           Coffee: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" x2="6" y1="2" y2="4"/><line x1="10" x2="10" y1="2" y2="4"/><line x1="14" x2="14" y1="2" y2="4"/></svg>,
-           ShoppingBag: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
-           Moon: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>,
-           Train: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect width="16" height="16" x="4" y="4" rx="2"/><path d="M4 10h16"/><path d="M12 4v6"/><path d="m8 16 2-2"/><path d="m16 16-2-2"/><path d="M12 12h.01"/><path d="m2 22 1-2"/><path d="m22 22-1-2"/></svg>,
-           Plane: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M2 22h20"/><path d="M13 6h7a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-7"/><path d="m13 6-5-6H6l3 6v11a2 2 0 0 1-2 2h-1l3 3h4l3-3h-1a2 2 0 0 1-2-2v-3"/></svg>,
-           Navigation: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>,
-           Heart: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>,
-           ArrowRight: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>,
-           Star: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
-           ChevronDown: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m6 9 6 6 6-6"/></svg>,
-           ChevronUp: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m18 15-6-6-6 6"/></svg>
-       };
-       const TripApp = () => {
-           const [activeDay, setActiveDay] = useState(0);
-           const [expandedItems, setExpandedItems] = useState({});
-           const toggleItem = (id) => {
-               setExpandedItems(prev => ({...prev, [id]: !prev[id]}));
-           };
-           const tripLogic = [
-               { text: "無折返、無兜路", Icon: Icons.Navigation },
-               { text: "體力分配最佳化", Icon: Icons.Heart },
-               { text: "美食與行街 Balance", Icon: Icons.Utensils },
-           ];
-           const itinerary = [
-               {
-               date: "12/25",
-               day: "Day 1",
-               title: "安國 · 弘大 · 明洞",
-               desc: "傳統韓屋與年輕活力的聖誕節",
-               locations: [
-                   { type: "food", time: "Breakfast", name: "Dotori Garden", desc: "安國人氣橡果漫遊麵包店", link: "https://naver.me/xzXNBJYr", tag: "早餐" },
-                   {
-                   type: "shop",
-                   time: "Morning",
-                   name: "安國潮店散步 (順路)",
-                   desc: "點擊展開查看所有店舖連結",
-                   tag: "購物",
-                   isList: true,
-                   items: [
-                       { name: "ZERO SPACE (文創)", link: "https://naver.me/5PyocQV5" },
-                       { name: "Object (雜貨)", link: "https://naver.me/xNOAPAtl" },
-                       { name: "Sowol Department", link: "https://naver.me/ID30Q57R" },
-                       { name: "INOUR MANSION", link: "https://naver.me/x1iTiBKb" },
-                       { name: "OINU", link: "https://naver.me/5FcjJ4qz" },
-                       { name: "Tamburins 安國旗艦", link: "https://naver.me/5kxLYuXe" },
-                   ]
-                   },
-                   { type: "transport", time: "18 mins", name: "安國 → 弘大入口", desc: "乘坐地鐵 3號線轉2號線 / 或巴士", tag: "交通" },
-                   { type: "food", time: "Lunch", name: "Gop Mapo 烤肥腸", desc: "弘大必食，油脂香氣爆發", link: "https://naver.me/GPcC4YWc", tag: "午餐" },
-                   { type: "cafe", time: "Teatime", name: "ARTIST BAKERY", desc: "弘大極具藝術感的鹽麵包 Cafe", link: "https://naver.me/FiT5e8AY", tag: "下午茶" },
-                   {
-                   type: "shop",
-                   time: "Afternoon",
-                   name: "弘大 → 延南洞散步",
-                   desc: "沿著京義線林蔭道行街",
-                   isList: true,
-                   tag: "散步",
-                   items: [
-                       { name: "弘大 Walking Street", link: "https://naver.me/FWmXKgwc" },
-                       { name: "延南洞 Café 區", link: "https://naver.me/57QAJRgl" },
-                   ]
-                   },
-                   { type: "food", time: "Dinner", name: "烏達里家 (乙支路/明洞)", desc: "醬蟹專門店", link: "https://naver.me/5jcqjhgG", tag: "晚餐" },
-                   { type: "view", time: "Night", name: "明洞聖誕燈飾", desc: "明洞聖堂夜景打卡", link: "https://naver.me/G8EN4VnZ", tag: "夜景" }
-               ]
-               },
-               {
-               date: "12/26",
-               day: "Day 2",
-               title: "明洞 · 東大門 · 新堂",
-               desc: "經典購物路線與地道辣雞爪",
-               locations: [
-                   { type: "food", time: "Breakfast", name: "宋家飯捲", desc: "明洞簡單美味早餐", link: "https://naver.me/G8uH9PKk", tag: "早餐" },
-                   { type: "shop", time: "Morning", name: "明洞購物", desc: "藥妝、波鞋、衣服", link: "https://naver.me/5LYTVJQS", tag: "購物" },
-                   { type: "food", time: "Lunch", name: "韓牛一條街", desc: "退溪路享受高品質韓牛", link: "https://naver.me/5mOIQw2x", tag: "午餐" },
-                   { type: "shop", time: "Afternoon", name: "南大門市場", desc: "童裝、飾品批發、傳統小食", link: "https://naver.me/Fu2fLt3r", tag: "購物" },
-                   { type: "shop", time: "Late PM", name: "東大門 Doota + No Brand", desc: "時尚服飾與超市掃貨", link: "https://naver.me/5ooSPrMO", tag: "購物" },
-                   { type: "cafe", time: "Break", name: "Scooper Gelato", desc: "必試：開心果 AFFOGATO", link: "https://naver.me/GW1qN7HP", tag: "甜品" },
-                   { type: "food", time: "Dinner", name: "新堂 友誼辣雞爪", desc: "韓國人最愛，辣得過癮", link: "https://naver.me/ISbHWWes", tag: "晚餐" },
-                   { type: "transport", time: "Night", name: "回明洞", desc: "搭地鐵回酒店休息", tag: "交通" }
-               ]
-               },
-               {
-               date: "12/27",
-               day: "Day 3",
-               title: "益善洞 · 乙支路",
-               desc: "文青氛圍與地道烤肉之夜",
-               locations: [
-                   { type: "food", time: "Breakfast", name: "Cafe Layered 安國", desc: "英式 Scone 早餐", link: "https://naver.me/GcBHBVtT", tag: "早餐" },
-                   { type: "food", time: "Lunch", name: "Nakwonjang", desc: "益善洞韓屋景觀餐廳", link: "https://naver.me/F5jtN9zK", tag: "午餐" },
-                   { type: "shop", time: "Afternoon", name: "益善洞文青小店", desc: "穿梭巷弄逛飾品、香氛", link: "https://naver.me/5E0PW5pz", tag: "散步" },
-                   { type: "food", time: "Dinner", name: "乙支路 水芹菜烤豬肉", desc: "清新解膩，人氣極高", link: "https://naver.me/5XecCJ2E", tag: "晚餐" },
-                   { type: "rest", time: "Night", name: "晚餐後選擇", desc: "回酒店 / 慢行明洞 / 睇燈飾", tag: "休息" }
-               ]
-               },
-               {
-               date: "12/28",
-               day: "Day 4",
-               title: "聖水洞 All Day",
-               desc: "首爾最潮地區與晚餐二選一",
-               locations: [
-                   { type: "food", time: "Breakfast", name: "Onion 聖水", desc: "廢墟風咖啡廳", link: "https://naver.me/FfnQXJR0", tag: "早餐" },
-                   {
-                   type: "shop",
-                   time: "Morning",
-                   name: "聖水潮流散步",
-                   desc: "潮流品牌集中地",
-                   isList: true,
-                   tag: "購物",
-                   items: [
-                       { name: "Musinsa Flagship", link: "https://naver.me/FNaQKTjD" },
-                       { name: "ADER ERROR", link: "https://naver.me/G7zB8A17" },
-                       { name: "Tamburins 聖水", link: "https://naver.me/FSVKkYgr" },
-                   ]
-                   },
-                   { type: "food", time: "Lunch", name: "無垢屋 (Mugwoo)", desc: "聖水洞精緻美食", link: "https://naver.me/IGJfWThB", tag: "午餐" },
-                   { type: "cafe", time: "Dessert", name: "Milky Shop", desc: "美式復古甜甜圈/批", link: "https://naver.me/FT6ByU3N", tag: "甜品" },
-                   { type: "transport", time: "Evening", name: "聖水 → 明洞", desc: "準備返明洞食晚餐", tag: "交通" },
-                   {
-                   type: "choice",
-                   time: "Dinner",
-                   name: "晚餐 2選1 (均在明洞)",
-                   desc: "按當晚心情與胃口決定",
-                   tag: "決策",
-                   choices: [
-                       {
-                       id: "A",
-                       label: "選項 A｜暖胃首選",
-                       name: "孔子飯 薯仔排骨湯",
-                       link: "https://naver.me/F67BizdP",
-                       color: "bg-green-50 border-green-200 text-green-800"
-                       },
-                       {
-                       id: "B",
-                       label: "選項 B｜香脆邪惡",
-                       name: "炸雞 (橋村/bb.q/NENE)",
-                       links: [
-                           {name: "橋村", url: "https://naver.me/xGRMiCmh"},
-                           {name: "bb.q", url: "https://naver.me/FPSHzw51"},
-                           {name: "NENE", url: "https://naver.me/5KGh80X0"}
-                       ],
-                       color: "bg-yellow-50 border-yellow-200 text-yellow-800"
-                       }
-                   ]
-                   }
-               ]
-               },
-               {
-               date: "12/29",
-               day: "Day 5",
-               title: "補貨 · 鰻魚 · 機場",
-               desc: "完美結尾，飽住上機",
-               locations: [
-                   { type: "food", time: "Breakfast", name: "Egg Drop 明洞", desc: "厚蛋吐司", link: "https://naver.me/5hgOP0Ia", tag: "早餐" },
-                   { type: "shop", time: "Morning", name: "明洞最後補貨", desc: "Olive Young, 超市零食", link: "https://naver.me/5LYTVJQS", tag: "購物" },
-                   { type: "food", time: "Lunch", name: "豐川鰻魚 🔥", desc: "乙支路必食，補充體力", link: "https://naver.me/5iOaZr9u", tag: "午餐" },
-                   { type: "plane", time: "Afternoon", name: "前往機場", desc: "拎行李 → 機場快線/巴士 → 回香港", tag: "返程" }
-               ]
-               }
-           ];
-           const getIcon = (type) => {
-               switch (type) {
-               case 'food': return <Icons.Utensils size={18} className="text-orange-500" />;
-               case 'cafe': return <Icons.Coffee size={18} className="text-amber-600" />;
-               case 'shop': return <Icons.ShoppingBag size={18} className="text-pink-500" />;
-               case 'view': return <Icons.Moon size={18} className="text-indigo-500" />;
-               case 'transport': return <Icons.Train size={18} className="text-blue-500" />;
-               case 'plane': return <Icons.Plane size={18} className="text-sky-600" />;
-               case 'choice': return <Icons.Star size={18} className="text-yellow-500" />;
-               default: return <Icons.MapPin size={18} className="text-slate-400" />;
-               }
-           };
-           return (
-<div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-12 max-w-md mx-auto shadow-2xl">
-                   {/* Header */}
-<div className="bg-white px-5 pt-8 pb-4 shadow-sm rounded-b-3xl">
-<div className="flex justify-between items-center mb-4">
-<div>
-<h1 className="text-2xl font-bold text-slate-900 tracking-tight">SEOUL PLAN</h1>
-<p className="text-slate-500 text-sm font-medium">12/25 — 12/29 (5 Days)</p>
-</div>
-<div className="text-right">
-<span className="inline-block bg-slate-900 text-white text-xs px-3 py-1 rounded-full font-bold">FINAL</span>
-</div>
-</div>
-                       {/* Logic Pills */}
-<div className="flex flex-wrap gap-2 mt-2">
-                       {tripLogic.map((l, i) => (
-<div key={i} className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200">
-<span className="text-indigo-500"><l.Icon size={14} /></span>
-<span className="text-xs font-bold text-slate-600">{l.text}</span>
-</div>
-                       ))}
-</div>
-</div>
-                   {/* Date Tabs */}
-<div className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md pt-4 pb-2 px-4 overflow-x-auto no-scrollbar border-b border-slate-200/50">
-<div className="flex gap-2 min-w-max">
-                       {itinerary.map((item, index) => (
-<button
-                           key={index}
-                           onClick={() => setActiveDay(index)}
-                           className={`flex flex-col items-center justify-center w-[72px] py-2 rounded-xl transition-all duration-200 ${
-                               activeDay === index
-                               ? 'bg-slate-900 text-white shadow-md transform scale-105'
-                               : 'bg-white text-slate-400 border border-slate-200'
-                           }`}
->
-<span className="text-[10px] font-bold uppercase opacity-80">{item.day}</span>
-<span className={`text-base font-bold leading-none mt-0.5 ${activeDay === index ? 'text-blue-300' : 'text-slate-600'}`}>
-                               {item.date.split('/')[1]}
-</span>
-</button>
-                       ))}
-</div>
-</div>
-                   {/* Content */}
-<div className="px-5 mt-6">
-<div className="mb-6 animate-fade-in">
-<h2 className="text-xl font-bold text-slate-900">{itinerary[activeDay].title}</h2>
-<p className="text-sm text-slate-500 mt-1">{itinerary[activeDay].desc}</p>
-</div>
-<div className="relative border-l-2 border-slate-200 ml-3 space-y-8 pb-10">
-                       {itinerary[activeDay].locations.map((loc, idx) => (
-<div key={idx} className="relative pl-8 group">
-                           {/* Timeline Dot */}
-<div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 transition-colors ${
-                               loc.type === 'transport' ? 'border-slate-300' : 'border-slate-800'
-                           }`}></div>
-                           {/* Time & Tag */}
-<div className="flex items-center gap-2 mb-2">
-<span className="text-xs font-bold text-slate-400 uppercase tracking-wide w-16">
-                               {loc.time}
-</span>
-<span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${
-                               loc.tag === '早餐' || loc.tag === '午餐' || loc.tag === '晚餐' ? 'bg-orange-400' :
-                               loc.tag === '購物' ? 'bg-pink-400' :
-                               loc.tag === '交通' ? 'bg-blue-400' :
-                               loc.tag === '決策' ? 'bg-purple-500' :
-                               'bg-slate-400'
-                               }`}>
-                               {loc.tag}
-</span>
-</div>
-                           {/* Card */}
-<div className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
-                               loc.type === 'choice' ? 'bg-white border-purple-200 shadow-md ring-1 ring-purple-100' : 'bg-white border-slate-100 shadow-sm'
-                           }`}>
-<div className="p-4">
-<div className="flex items-start justify-between gap-3">
-<div className="flex-1">
-<h3 className="font-bold text-slate-800 text-lg leading-snug">
-                                       {loc.name}
-</h3>
-<p className="text-sm text-slate-500 mt-1 leading-relaxed">
-                                       {loc.desc}
-</p>
-</div>
-<div className="bg-slate-50 p-2 rounded-xl shrink-0">
-                                   {getIcon(loc.type)}
-</div>
-</div>
-                               {/* Single Link Button */}
-                               {loc.link && !loc.choices && (
-<a
-                                   href={loc.link}
-                                   target="_blank"
-                                   rel="noopener noreferrer"
-                                   className="mt-3 flex items-center justify-center w-full py-2 bg-slate-50 text-slate-600 rounded-lg text-sm font-bold gap-1.5 hover:bg-slate-100 active:bg-slate-200 transition-colors"
->
-<Icons.MapPin size={14} /> Naver Map
-</a>
-                               )}
-                               {/* Expandable List (Shopping/Walks) */}
-                               {loc.isList && (
-<div className="mt-3">
-<button
-                                       onClick={() => toggleItem(`${activeDay}-${idx}`)}
-                                       className="flex items-center justify-between w-full p-2 bg-slate-50 rounded-lg text-xs font-bold text-slate-600"
->
-<span>查看 {loc.items.length} 個地點連結</span>
-                                       {expandedItems[`${activeDay}-${idx}`] ? <Icons.ChevronUp size={14}/> : <Icons.ChevronDown size={14}/>}
-</button>
-                                   {expandedItems[`${activeDay}-${idx}`] && (
-<div className="mt-2 space-y-2 pl-1 border-l-2 border-slate-100">
-                                       {loc.items.map((item, i) => (
-<a
-                                           key={i}
-                                           href={item.link}
-                                           target="_blank"
-                                           rel="noopener noreferrer"
-                                           className="block p-2 bg-white border border-slate-100 rounded hover:border-blue-300 text-sm text-slate-700 flex justify-between items-center"
->
-                                           {item.name}
-<Icons.ArrowRight size={12} className="text-slate-300"/>
-</a>
-                                       ))}
-</div>
-                                   )}
-</div>
-                               )}
-                               {/* Choice Logic (Day 4 Dinner) */}
-                               {loc.choices && (
-<div className="mt-4 grid gap-3">
-                                   {loc.choices.map((choice, cIdx) => (
-<div key={cIdx} className={`p-3 rounded-xl border ${choice.color}`}>
-<div className="flex justify-between items-start mb-2">
-<span className="font-bold text-xs uppercase opacity-70">{choice.id}</span>
-<span className="text-[10px] font-bold bg-white/50 px-1.5 rounded">{choice.label}</span>
-</div>
-<div className="font-bold text-base mb-2">{choice.name}</div>
-                                       {choice.link ? (
-<a href={choice.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-bold underline decoration-2 underline-offset-2">
-                                           Naver Map <Icons.ArrowRight size={10} />
-</a>
-                                       ) : (
-<div className="flex flex-wrap gap-2">
-                                           {choice.links.map((l, li) => (
-<a key={li} href={l.url} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-white/60 rounded text-[10px] font-bold hover:bg-white">
-                                               {l.name} ↗
-</a>
-                                           ))}
-</div>
-                                       )}
-</div>
-                                   ))}
-</div>
-                               )}
-</div>
-</div>
-</div>
-                       ))}
-</div>
-</div>
-                   {/* Footer */}
-<div className="text-center pb-8 pt-4 border-t border-slate-100 mt-4">
-<p className="text-xs text-slate-300 font-medium">Safe Travels • 2024</p>
-</div>
-</div>
-           );
-       };
-       const root = ReactDOM.createRoot(document.getElementById('root'));
-       root.render(<TripApp />);
-</script>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // --- Icon Components (Lucide-React style) ---
+        const Icons = {
+            MapPin: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>,
+            Utensils: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>,
+            Pencil: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z"/></svg>,
+            Save: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+            Plus: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 5v14"/><path d="M5 12h14"/></svg>,
+            Trash: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+            RefreshCw: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 12A9 9 0 0 0 6 5.3L3 7"/><path d="M3 3v4h4"/><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"/><path d="M21 17v-4h-4"/></svg>,
+            X: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+            Home: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+        };
+
+        const TRIP_DOC_ID = "seoul_2024_itinerary";
+        const DEFAULT_ITINERARY_DATA = [
+            { id: 1, date: "12/25", day: "Day 1", title: "安國 · 弘大 · 明洞", desc: "傳統韓屋與年輕活力的聖誕節", locations: [
+                { id: 101, type: "food", time: "Breakfast", name: "Dotori Garden", desc: "安國人氣橡果漫遊麵包店", tag: "早餐" },
+                { id: 102, type: "shop", time: "Morning", name: "安國潮店散步", desc: "ZERO SPACE, Object, Tamburins", tag: "購物" },
+                { id: 103, type: "food", time: "Dinner", name: "烏達里家 (乙支路/明洞)", desc: "醬蟹專門店", tag: "晚餐" }
+            ]},
+            { id: 2, date: "12/26", day: "Day 2", title: "明洞 · 東大門 · 新堂", desc: "經典購物路線與地道辣雞爪", locations: [
+                { id: 201, type: "food", time: "Lunch", name: "韓牛一條街", desc: "退溪路享受高品質韓牛", tag: "午餐" },
+                { id: 202, type: "food", time: "Dinner", name: "新堂 友誼辣雞爪", desc: "韓國人最愛，辣得過癮", tag: "晚餐" }
+            ]},
+        ];
+
+        // --- Utility Functions ---
+        const getItemIcon = (type) => {
+            const icons = {
+                'food': { icon: Icons.Utensils, color: 'text-orange-500' },
+                'shop': { icon: Icons.ShoppingBag, color: 'text-pink-500' },
+                'cafe': { icon: Icons.Coffee, color: 'text-amber-600' },
+                'transport': { icon: Icons.Train, color: 'text-blue-500' },
+                'view': { icon: Icons.Moon, color: 'text-indigo-500' },
+                'rest': { icon: Icons.Home, color: 'text-green-500' },
+                'default': { icon: Icons.MapPin, color: 'text-slate-400' },
+            };
+            return icons[type] || icons['default'];
+        };
+
+        const generateId = () => Math.floor(Math.random() * 10000000);
+        
+        // --- Core Components ---
+
+        const EditableTripItem = ({ item, dayIndex, locationIndex, updateItem, deleteItem }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [editData, setEditData] = useState(item);
+            const { icon: Icon, color } = getItemIcon(item.type);
+
+            const handleSave = () => {
+                updateItem(dayIndex, locationIndex, editData);
+                setIsEditing(false);
+            };
+
+            const handleChange = (e) => {
+                setEditData({ ...editData, [e.target.name]: e.target.value });
+            };
+
+            const handleDelete = () => {
+                if (window.confirm("確定要刪除這個行程項目嗎？")) {
+                     deleteItem(dayIndex, locationIndex);
+                }
+            };
+
+            return (
+                <div className={`rounded-2xl border transition-all duration-200 overflow-hidden bg-white shadow-sm hover:shadow-md ${isEditing ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`}>
+                    <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                                {isEditing ? (
+                                    <>
+                                        <input
+                                            type="text"
+                                            name="name"
+                                            value={editData.name}
+                                            onChange={handleChange}
+                                            className="font-bold text-slate-800 text-lg leading-snug w-full border-b border-slate-300 focus:border-blue-500 outline-none p-1 mb-1"
+                                            placeholder="地點名稱"
+                                        />
+                                        <input
+                                            type="text"
+                                            name="desc"
+                                            value={editData.desc}
+                                            onChange={handleChange}
+                                            className="text-sm text-slate-500 w-full border-b border-slate-300 focus:border-blue-500 outline-none p-1 mt-1"
+                                            placeholder="簡短描述"
+                                        />
+                                    </>
+                                ) : (
+                                    <>
+                                        <h3 className="font-bold text-slate-800 text-lg leading-snug">{item.name}</h3>
+                                        <p className="text-sm text-slate-500 mt-1 leading-relaxed">{item.desc}</p>
+                                    </>
+                                )}
+                            </div>
+                            <div className={`p-2 rounded-xl shrink-0 ${isEditing ? 'bg-blue-50' : 'bg-slate-50'}`}>
+                                <Icon size={18} className={color} />
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="mt-3 flex gap-2">
+                            {isEditing ? (
+                                <button
+                                    onClick={handleSave}
+                                    className="flex items-center justify-center flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold gap-1.5 hover:bg-blue-600 transition-colors shadow-md"
+                                >
+                                    <Icons.Save size={14} /> 儲存變更
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => setIsEditing(true)}
+                                    className="flex items-center justify-center flex-1 py-2 bg-slate-50 text-slate-600 rounded-lg text-sm font-bold gap-1.5 hover:bg-slate-100 active:bg-slate-200 transition-colors"
+                                >
+                                    <Icons.Pencil size={14} /> 編輯
+                                </button>
+                            )}
+                             <button
+                                onClick={handleDelete}
+                                className={`flex items-center justify-center px-3 py-2 ${isEditing ? 'bg-red-100 text-red-600' : 'bg-slate-50 text-slate-400'} rounded-lg text-sm font-bold hover:bg-red-200 transition-colors`}
+                            >
+                                <Icons.Trash size={14} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const TripApp = () => {
+            const [itinerary, setItinerary] = useState(null);
+            const [activeDayIndex, setActiveDayIndex] = useState(0);
+            const [loading, setLoading] = useState(true);
+            const [userId, setUserId] = useState(null);
+            const [error, setError] = useState(null);
+
+            // --- Firestore Hooks & Logic ---
+
+            // 1. Initial Data Fetch / Listener Setup
+            useEffect(() => {
+                const handleAuthReady = (e) => {
+                    const authenticatedUserId = e.detail.userId;
+                    setUserId(authenticatedUserId);
+
+                    if (!window.db || !window.appId) {
+                        setError("資料庫未初始化，請檢查控制台。");
+                        setLoading(false);
+                        return;
+                    }
+
+                    // Firestore Path: /artifacts/{appId}/users/{userId}/trips/{docId}
+                    const docRef = doc(window.db, 
+                        `artifacts/${window.appId}/users/${authenticatedUserId}/trips`, 
+                        TRIP_DOC_ID
+                    );
+
+                    // Real-time listener
+                    const unsubscribe = onSnapshot(docRef, async (docSnap) => {
+                        if (docSnap.exists()) {
+                            // Data exists, load it
+                            console.log("Firestore: Document data loaded.");
+                            setItinerary(docSnap.data().data);
+                        } else {
+                            // Document does not exist, initialize with default data
+                            console.log("Firestore: No document found. Initializing...");
+                            const initialData = {
+                                createdAt: new Date(),
+                                data: DEFAULT_ITINERARY_DATA
+                            };
+                            await setDoc(docRef, initialData).catch(e => console.error("Error setting initial doc:", e));
+                            setItinerary(DEFAULT_ITINERARY_DATA);
+                        }
+                        setLoading(false);
+                    }, (err) => {
+                        console.error("Firestore Error:", err);
+                        setError(`資料讀取錯誤: ${err.message}`);
+                        setLoading(false);
+                    });
+
+                    return () => unsubscribe();
+                };
+
+                window.addEventListener('authReady', handleAuthReady);
+                
+                // Fallback for immediate load if auth is somehow ready before effect runs
+                if (window.globalUserId) {
+                    handleAuthReady({ detail: { userId: window.globalUserId } });
+                }
+
+                return () => window.removeEventListener('authReady', handleAuthReady);
+            }, []); // Run only once on mount
+
+            // 2. Data Update Function
+            const updateFirestore = useCallback(async (newItinerary) => {
+                if (!window.db || !userId) return;
+
+                const docRef = doc(window.db, 
+                    `artifacts/${window.appId}/users/${userId}/trips`, 
+                    TRIP_DOC_ID
+                );
+                
+                try {
+                    await updateDoc(docRef, { data: newItinerary, updatedAt: new Date() });
+                    console.log("Firestore: Data updated successfully.");
+                } catch (e) {
+                    console.error("Error updating document:", e);
+                    setError("數據保存失敗，請檢查網絡。");
+                }
+            }, [userId]);
+
+            // --- UI/State Management Functions ---
+
+            const updateItem = useCallback((dayIndex, locationIndex, newLocData) => {
+                const newItinerary = [...itinerary];
+                newItinerary[dayIndex].locations[locationIndex] = newLocData;
+                setItinerary(newItinerary);
+                updateFirestore(newItinerary);
+            }, [itinerary, updateFirestore]);
+
+            const deleteItem = useCallback((dayIndex, locationIndex) => {
+                const newItinerary = [...itinerary];
+                newItinerary[dayIndex].locations.splice(locationIndex, 1);
+                setItinerary(newItinerary);
+                updateFirestore(newItinerary);
+            }, [itinerary, updateFirestore]);
+            
+            const addItem = useCallback((dayIndex) => {
+                const newItinerary = [...itinerary];
+                const newLocation = {
+                    id: generateId(),
+                    type: "default",
+                    time: "Time",
+                    name: "新增地點 (點擊編輯)",
+                    desc: "點擊編輯按鈕修改細節",
+                    tag: "新增"
+                };
+                newItinerary[dayIndex].locations.push(newLocation);
+                setItinerary(newItinerary);
+                updateFirestore(newItinerary);
+            }, [itinerary, updateFirestore]);
+
+            // --- Render Logic ---
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <p className="text-xl font-semibold text-slate-500 flex items-center gap-2">
+                            <Icons.RefreshCw size={20} className="animate-spin" />
+                            載入行程數據中...
+                        </p>
+                    </div>
+                );
+            }
+
+            if (error) {
+                 return (
+                    <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-red-50">
+                        <Icons.X size={36} className="text-red-500 mb-4" />
+                        <h2 className="text-xl font-bold text-red-700">數據庫連接錯誤</h2>
+                        <p className="text-red-600 mt-2">{error}</p>
+                        <p className="text-sm text-red-500 mt-4">請檢查控制台 (Console) 或重新整理頁面。</p>
+                        <p className="text-xs text-slate-400 mt-8">User ID: {userId || 'N/A'}</p>
+                    </div>
+                );
+            }
+            
+            const activeDay = itinerary[activeDayIndex];
+
+            return (
+                <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-12 max-w-md mx-auto shadow-2xl">
+                    {/* Header */}
+                    <div className="bg-white px-5 pt-8 pb-4 shadow-sm rounded-b-3xl sticky top-0 z-30">
+                        <div className="flex justify-between items-center mb-2">
+                            <div>
+                                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">首爾行程規劃器</h1>
+                                <p className="text-slate-500 text-sm font-medium">資料庫狀態: <span className="text-green-500 font-bold">已連接 (Firestore)</span></p>
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-mono mt-1 break-all">
+                            User ID: {userId} (請勿外洩此 ID)
+                        </p>
+                    </div>
+
+                    {/* Date Tabs */}
+                    <div className="sticky top-[108px] z-20 bg-slate-50/95 backdrop-blur-md pt-4 pb-2 px-4 overflow-x-auto no-scrollbar border-b border-slate-200/50">
+                        <div className="flex gap-2 min-w-max">
+                        {itinerary.map((item, index) => (
+                            <button
+                            key={item.id}
+                            onClick={() => setActiveDayIndex(index)}
+                            className={`flex flex-col items-center justify-center w-[72px] py-2 rounded-xl transition-all duration-200 ${
+                                activeDayIndex === index
+                                ? 'bg-slate-900 text-white shadow-md transform scale-105'
+                                : 'bg-white text-slate-400 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                            >
+                            <span className="text-[10px] font-bold uppercase opacity-80">{item.day}</span>
+                            <span className={`text-base font-bold leading-none mt-0.5 ${activeDayIndex === index ? 'text-blue-300' : 'text-slate-600'}`}>
+                                {item.date.split('/')[1]}
+                            </span>
+                            </button>
+                        ))}
+                        </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="px-5 mt-6">
+                        <div className="mb-6 animate-fade-in">
+                            <h2 className="text-xl font-bold text-slate-900">{activeDay.title}</h2>
+                            <p className="text-sm text-slate-500 mt-1">{activeDay.desc}</p>
+                        </div>
+
+                        <div className="relative border-l-2 border-slate-200 ml-3 space-y-8 pb-10">
+                            {activeDay.locations.map((loc, idx) => (
+                                <div key={loc.id} className="relative pl-8 group">
+                                    {/* Timeline Dot */}
+                                    <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 border-slate-800 transition-colors`}></div>
+                                    
+                                    {/* Time & Tag (Editable in place) */}
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <input
+                                            type="text"
+                                            value={loc.time}
+                                            onChange={(e) => {
+                                                const newItinerary = [...itinerary];
+                                                newItinerary[activeDayIndex].locations[idx].time = e.target.value;
+                                                setItinerary(newItinerary);
+                                                // Optional: Debounce or save on blur for time field
+                                            }}
+                                            onBlur={() => updateFirestore(itinerary)}
+                                            className="text-xs font-bold text-slate-600 uppercase tracking-wide w-20 p-1 rounded border border-slate-200 focus:border-blue-400 outline-none"
+                                            placeholder="時間"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={loc.tag}
+                                            onChange={(e) => {
+                                                const newItinerary = [...itinerary];
+                                                newItinerary[activeDayIndex].locations[idx].tag = e.target.value;
+                                                setItinerary(newItinerary);
+                                                // Optional: Debounce or save on blur for tag field
+                                            }}
+                                            onBlur={() => updateFirestore(itinerary)}
+                                            className={`text-[10px] font-bold px-2 py-0.5 rounded text-white bg-slate-400 w-auto max-w-24 p-1 rounded border border-slate-200 focus:border-blue-400 outline-none`}
+                                            placeholder="標籤"
+                                            style={{ backgroundColor: loc.tag ? 'var(--tw-color-blue-500)' : 'var(--tw-color-slate-400)' }}
+                                        />
+                                    </div>
+
+                                    <EditableTripItem 
+                                        item={loc}
+                                        dayIndex={activeDayIndex}
+                                        locationIndex={idx}
+                                        updateItem={updateItem}
+                                        deleteItem={deleteItem}
+                                    />
+                                </div>
+                            ))}
+                            
+                            {/* Add New Item Button */}
+                            <div className="relative pl-8">
+                                <div className="absolute -left-[9px] top-4 w-4 h-4 rounded-full bg-slate-300 border-4 border-slate-50"></div>
+                                <button
+                                    onClick={() => addItem(activeDayIndex)}
+                                    className="mt-4 flex items-center justify-center w-full py-3 bg-indigo-500 text-white rounded-xl text-md font-bold gap-2 hover:bg-indigo-600 active:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                >
+                                    <Icons.Plus size={18} />
+                                    新增行程項目
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Footer */}
+                    <div className="text-center pb-8 pt-4 border-t border-slate-100 mt-4">
+                        <p className="text-xs text-slate-300 font-medium">Data persisted via Firestore • 2024</p>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TripApp />);
+    </script>
 </body>
 </html>
