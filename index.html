@@ -1,486 +1,784 @@
 <!DOCTYPE html>
-<html lang="zh-HK">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>首爾行程規劃器 (可編輯)</title>
-    
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Tailwind CSS -->
+    <title>首爾聖誕自由行 - 行程管理</title>
+    <!-- 載入 Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Firebase JS SDK (必須在運行時引入) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged 
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { 
-            getFirestore, doc, setDoc, onSnapshot, updateDoc, 
-            collection, query, getDoc, getDocs, setLogLevel
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // 設定 Firebase Debug Level (開發用)
-        setLogLevel('debug');
-
-        // 檢查全局變數
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        if (firebaseConfig) {
-            const app = initializeApp(firebaseConfig);
-            window.db = getFirestore(app);
-            window.auth = getAuth(app);
-            
-            // 登入邏輯
-            const signInUser = async () => {
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(window.auth, initialAuthToken);
-                        console.log("Firebase: Signed in with custom token.");
-                    } else {
-                        await signInAnonymously(window.auth);
-                        console.log("Firebase: Signed in anonymously.");
-                    }
-                } catch (error) {
-                    console.error("Firebase Auth Error:", error);
-                }
-            };
-            
-            // 確保 authReady 狀態更新
-            onAuthStateChanged(window.auth, (user) => {
-                if (user) {
-                    window.globalUserId = user.uid;
-                } else {
-                    window.globalUserId = crypto.randomUUID(); // Fallback for unauthenticated
-                }
-                // 發送事件通知 React Auth 已準備好
-                window.dispatchEvent(new CustomEvent('authReady', { detail: { userId: window.globalUserId } }));
-            });
-
-            signInUser();
-        } else {
-            console.error("Firebase Config missing. Data persistence disabled.");
-        }
-        
-        window.appId = appId;
-    </script>
-
-    <!-- Inline Styles for Mobile and Custom Scrollbar Hide -->
+    <!-- 載入 Zen Maru Gothic 字體 (日式可愛風格) -->
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+    <!-- 載入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        .no-scrollbar::-webkit-scrollbar {
+        /* 自定義字體和聖誕色彩配置 */
+        :root {
+            --christmas-green: #15803d; /* 主色：深聖誕綠 (Emerald 700) */
+            --christmas-red: #b91c1c; /* 強調色：喜慶紅 (Red 700) */
+            --snow-white: #FFFFFF; /* 雪白 */
+            --warm-gray: #B2B2B2; /* 暖灰 */
+            --bg-color: #fcfcfc; /* 輕微的背景色 */
+        }
+        body {
+            font-family: 'Zen Maru Gothic', 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-color);
+            padding-top: 5rem; 
+            padding-bottom: 5rem;
+        }
+        .main-container {
+            max-width: 420px;
+            margin: auto;
+            min-height: 100vh;
+            background-color: var(--snow-white);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+        .nav-active {
+            color: var(--christmas-red);
+            border-top: 2px solid var(--christmas-red);
+        }
+        .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
-        .no-scrollbar {
+        .scrollbar-hide {
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
-        /* Fade-in animation for smoother transitions */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        /* 聖誕主題的輸入框焦點效果 */
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--christmas-red) !important;
+            box-shadow: 0 0 0 1px var(--christmas-red) !important;
         }
-        .animate-fade-in {
-            animation: fadeIn 0.5s ease-out;
+
+        /* Tailwind Config for custom colors */
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'main-green': 'var(--christmas-green)',
+                        'main-red': 'var(--christmas-red)',
+                        'snow-white': 'var(--snow-white)',
+                        'warm-gray': 'var(--warm-gray)',
+                        'bg-color': 'var(--bg-color)',
+                        // 聖誕輔助色
+                        'accent-gold': '#FACC15', // 黃金色
+                        'accent-food': '#B91C1C', // 紅色 (餐飲)
+                        'accent-shop': '#D97706', // 橘金色 (購物)
+                        'accent-sight': '#34D399', // 薄荷綠 (景點)
+                    }
+                }
+            }
         }
     </style>
 </head>
-<body class="bg-slate-50">
-    <div id="root"></div>
+<body>
 
-    <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
+    <!-- App Main Container (模擬手機螢幕) -->
+    <div class="main-container relative">
 
-        // --- Icon Components (Lucide-React style) ---
-        const Icons = {
-            MapPin: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>,
-            Utensils: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>,
-            Pencil: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z"/></svg>,
-            Save: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
-            Plus: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M12 5v14"/><path d="M5 12h14"/></svg>,
-            Trash: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
-            RefreshCw: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 12A9 9 0 0 0 6 5.3L3 7"/><path d="M3 3v4h4"/><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"/><path d="M21 17v-4h-4"/></svg>,
-            X: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
-            Home: (props) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+        <!-- Header (固定在頂部) -->
+        <header class="fixed top-0 w-full max-w-[420px] bg-main-green text-snow-white p-4 z-10 shadow-lg rounded-b-2xl">
+            <h1 class="text-xl font-bold text-center flex items-center justify-center">
+                <i data-lucide="sparkles" class="w-5 h-5 mr-2 text-accent-gold"></i>
+                首爾聖誕自由行
+            </h1>
+            <p class="text-sm text-center opacity-90 mt-1">🎄 2025/12/25 - 12/29</p>
+        </header>
+
+        <!-- Main Content -->
+        <main id="app-content" class="p-4 pt-4 pb-20">
+            <!-- 內容將由 JavaScript 載入 -->
+        </main>
+
+        <!-- Bottom Floating Navigation Bar (Tabs) -->
+        <nav class="fixed bottom-0 w-full max-w-[420px] bg-snow-white shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-20 rounded-t-2xl">
+            <div class="flex justify-around items-center h-16">
+                <button class="nav-item flex flex-col items-center justify-center h-full w-1/4 text-warm-gray transition-colors nav-active" data-tab="itinerary">
+                    <i data-lucide="calendar-days" class="w-6 h-6"></i>
+                    <span class="text-xs mt-1">行程</span>
+                </button>
+                <button class="nav-item flex flex-col items-center justify-center h-full w-1/4 text-warm-gray transition-colors" data-tab="guide">
+                    <i data-lucide="map" class="w-6 h-6"></i>
+                    <span class="text-xs mt-1">指南</span>
+                </button>
+                <button class="nav-item flex flex-col items-center justify-center h-full w-1/4 text-warm-gray transition-colors" data-tab="weather">
+                    <i data-lucide="cloud-lightning" class="w-6 h-6"></i>
+                    <span class="text-xs mt-1">天氣</span>
+                </button>
+                <button class="nav-item flex flex-col items-center justify-center h-full w-1/4 text-warm-gray transition-colors" data-tab="finance">
+                    <i data-lucide="wallet" class="w-6 h-6"></i>
+                    <span class="text-xs mt-1">消費</span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <script>
+        // --- 全局狀態管理 ---
+        let currentDayIndex = 0; 
+        let editingSpotId = null; // 儲存當前正在編輯的景點 ID
+        let isAddingSpot = false; // 標記是否正在新增景點
+
+        // 財務狀態 (模擬資料)
+        let financeState = {
+            baseCurrency: 'HKD',
+            targetCurrency: 'KRW',
+            rate: 170.5, 
+            lastUpdated: new Date().toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit' }),
+            exchangeStatus: '成功連線',
+            budget: 5000, 
+            expenses: [
+                { id: 1, day: 1, item: '早餐: Dotori Garden', amountKRW: 34000, amountHKD: 199.4, category: '餐飲' },
+                { id: 2, day: 1, item: '交通: 地鐵/巴士', amountKRW: 4000, amountHKD: 23.5, category: '交通' },
+                { id: 3, day: 2, item: '購物: 明洞護膚品', amountKRW: 120000, amountHKD: 703.8, category: '購物' },
+            ],
         };
 
-        const TRIP_DOC_ID = "seoul_2024_itinerary";
-        const DEFAULT_ITINERARY_DATA = [
-            { id: 1, date: "12/25", day: "Day 1", title: "安國 · 弘大 · 明洞", desc: "傳統韓屋與年輕活力的聖誕節", locations: [
-                { id: 101, type: "food", time: "Breakfast", name: "Dotori Garden", desc: "安國人氣橡果漫遊麵包店", tag: "早餐" },
-                { id: 102, type: "shop", time: "Morning", name: "安國潮店散步", desc: "ZERO SPACE, Object, Tamburins", tag: "購物" },
-                { id: 103, type: "food", time: "Dinner", name: "烏達里家 (乙支路/明洞)", desc: "醬蟹專門店", tag: "晚餐" }
-            ]},
-            { id: 2, date: "12/26", day: "Day 2", title: "明洞 · 東大門 · 新堂", desc: "經典購物路線與地道辣雞爪", locations: [
-                { id: 201, type: "food", time: "Lunch", name: "韓牛一條街", desc: "退溪路享受高品質韓牛", tag: "午餐" },
-                { id: 202, type: "food", time: "Dinner", name: "新堂 友誼辣雞爪", desc: "韓國人最愛，辣得過癮", tag: "晚餐" }
-            ]},
+        // 行程數據 (使用 let 允許編輯和新增)
+        let itineraryData = [
+            {
+                id: 101, day: 1, date: "12/25 (Day 1)", route: "安國 → 弘大 → 延南洞 → 明洞燈飾", location: "首爾北部",
+                attire: "建議穿著：羽絨外套、厚毛衣、圍巾、保暖內搭。戶外活動多，需注意保暖。",
+                snow: "❄️ 雪況提示：聖誕節當日有陣雪機率，地面可能濕滑，請穿著防滑靴。",
+                spots: [
+                    { id: 1, category: "food", name: "Dotori Garden (도토리가든)", desc: "可愛的松鼠主題咖啡廳，招牌是軟綿綿的優格，必拍打卡！", address: "서울 종로구 북촌로 4길 20", tags: ["必吃", "打卡"], tip: "建議在戶外庭院區拍照，光線最佳。" },
+                    { id: 2, category: "shopping", name: "安國逛街順路", desc: "安國站周邊的設計師選品店連線。", address: "ZERO SPACE 서울 종로구 북촌로5가길 16", tags: ["必買"], tip: null },
+                    { id: 3, category: "transport", name: "安國 → 弘大", desc: "地鐵18分鐘", address: "弘大入口站", tags: [], tip: null },
+                    { id: 4, category: "food", name: "Gop Mapo 烤肥腸 (곱마포)", desc: "地道烤肥腸名店，口感Q彈。", address: "서울 마포구 독막로7길 51", tags: ["必吃", "地道"], tip: "點一份炒飯作為結尾是標準吃法！" },
+                    { id: 5, category: "sightseeing", name: "🎄 明洞聖誕燈飾 - 明洞聖堂", desc: "聖誕節當日，明洞聖堂周邊的燈飾佈置非常浪漫。", address: "명동성당 서울 중구 명동길 74", tags: ["必拍", "活動"], tip: "晚上 7-9 點燈光效果最佳。" },
+                ]
+            },
+            {
+                id: 102, day: 2, date: "12/26 (Day 2)", route: "明洞 → 南大門 → 東大門 → 新堂", location: "首爾市中心",
+                attire: "建議穿著：保暖內搭+輕薄發熱衣，室內商場多，洋蔥式穿搭為主。",
+                snow: "☀️ 雪況提示：今日晴朗，戶外體感溫度較低，但沒有積雪困擾。",
+                spots: [
+                    { id: 6, category: "food", name: "宋家飯捲 (송가김밥)", desc: "明洞傳統韓式飯捲，簡單又美味的早餐選擇。", address: "서울 중구 퇴계로 120", tags: ["早餐", "小吃"], tip: null },
+                    { id: 7, category: "shopping", name: "南大門市場 (남대문시장)", desc: "韓國歷史最悠久的傳統市場，藥妝、童裝、特產補貨站。", address: "서울 중구 남대문시장4길 21", tags: ["必買", "傳統"], tip: "市場內很多小吃攤，可以邊走邊吃。" },
+                    { id: 8, category: "food", name: "🔥 友誼辣雞爪 (우정닭발)", desc: "新堂辣雞爪一條街的人氣店，無骨辣雞爪配燒酒。", address: "서울 중구 퇴계로 421 (新堂 닭발 골목)", tags: ["晚餐", "地道"], tip: "辣度可以調整，建議從入門級開始嘗試。" },
+                ]
+            },
+            // 由於只提供 2 天數據，我們複製 Day 1, 2, 5 數據來模擬 5 天切換
+            { id: 103, day: 3, date: "12/27 (Day 3)", route: "景福宮 → 三清洞", location: "首爾北部",
+                attire: "建議穿著：最強禦寒裝備，本日多為戶外活動。", snow: "☀️ 雪況提示：晴朗，但風大。", spots: [
+                    { id: 9, category: "sightseeing", name: "景福宮 (경복궁)", desc: "朝鮮王朝的正宮，可以租借韓服拍照。", address: "서울 종로구 사직로 161", tags: ["必拍", "歷史"], tip: "韓服可免費入場。" },
+                    { id: 10, category: "food", name: "土俗村蔘雞湯 (토속촌 삼계탕)", desc: "總統也愛吃的蔘雞湯名店。", address: "서울 종로구 체부동 85-1", tags: ["午餐", "養生"], tip: null },
+                ]
+            },
+            { id: 104, day: 4, date: "12/28 (Day 4)", route: "江陵一日遊", location: "江原道",
+                attire: "建議穿著：特厚保暖衣物，江原道氣溫更低。", snow: "❄️ 雪況提示：江陵地區可能有雪。", spots: [
+                    { id: 11, category: "activity", name: "江陵咖啡街", desc: "沿海的咖啡廳，欣賞冬季海景。", address: "강원 강릉시 창해로 17", tags: ["打卡", "海景"], tip: null },
+                ]
+            },
+            {
+                id: 105, day: 5, date: "12/29 (Day 5)", route: "最後補貨 → 仁川機場", location: "機場準備",
+                attire: "建議穿著：最厚的衣物。早上需在戶外移動，且搭機時保暖重要。",
+                snow: "☀️ 雪況提示：旅程的最後一天，晴空萬里，適合移動。",
+                spots: [
+                    { id: 12, category: "food", name: "Egg Drop (에그드랍)", desc: "人氣吐司早餐店，軟嫩滑蛋搭配多種餡料。", address: "서울 중구 명동길 24", tags: ["早餐", "速食"], tip: "推薦培根芝士蛋吐司。" },
+                    { id: 13, category: "food", name: "最後午餐 - 豐川鰻魚 (풍천장어)", desc: "烤鰻魚料理，以健康美味為旅程劃下完美句點。", address: "서울 중구 명동4길 10", tags: ["午餐", "養生"], tip: "配上薑絲和特製醬汁食用。" },
+                    { id: 14, category: "transport", name: "✈️ 飯後 → 回酒店拎行李 → 機場", desc: "預留充足時間前往機場。", address: "仁川國際機場", tags: ["交通", "回程"], tip: "請提前在 App 內確認機場快線或巴士的時刻表。" },
+                ]
+            }
         ];
-
-        // --- Utility Functions ---
-        const getItemIcon = (type) => {
-            const icons = {
-                'food': { icon: Icons.Utensils, color: 'text-orange-500' },
-                'shop': { icon: Icons.ShoppingBag, color: 'text-pink-500' },
-                'cafe': { icon: Icons.Coffee, color: 'text-amber-600' },
-                'transport': { icon: Icons.Train, color: 'text-blue-500' },
-                'view': { icon: Icons.Moon, color: 'text-indigo-500' },
-                'rest': { icon: Icons.Home, color: 'text-green-500' },
-                'default': { icon: Icons.MapPin, color: 'text-slate-400' },
-            };
-            return icons[type] || icons['default'];
-        };
-
-        const generateId = () => Math.floor(Math.random() * 10000000);
         
-        // --- Core Components ---
+        // --- 輔助函數 ---
 
-        const EditableTripItem = ({ item, dayIndex, locationIndex, updateItem, deleteItem }) => {
-            const [isEditing, setIsEditing] = useState(false);
-            const [editData, setEditData] = useState(item);
-            const { icon: Icon, color } = getItemIcon(item.type);
+        /**
+         * 模擬 API 呼叫：即時匯率
+         */
+        async function fetchExchangeRate() {
+            await new Promise(resolve => setTimeout(resolve, 800)); 
+            const newRate = (170 + Math.random() * 2).toFixed(2);
+            financeState.rate = parseFloat(newRate);
+            financeState.lastUpdated = new Date().toLocaleTimeString('zh-Hant', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            financeState.exchangeStatus = '成功連線';
+            if (document.querySelector('[data-tab="finance"]').classList.contains('nav-active')) {
+                renderFinance();
+            }
+        }
 
-            const handleSave = () => {
-                updateItem(dayIndex, locationIndex, editData);
-                setIsEditing(false);
+        /**
+         * 模擬 API 呼叫：航班狀態
+         */
+        async function fetchFlightStatus() {
+            await new Promise(resolve => setTimeout(resolve, 1000)); 
+            return [
+                { code: 'UO626', route: '香港 (HKG) → 首爾仁川 (ICN)', scheduled: '12/25 08:00', estimated: '12/25 08:05', status: '準時', icon: 'plane-takeoff', color: 'text-main-green' },
+                { code: 'UO631', route: '首爾仁川 (ICN) → 香港 (HKG)', scheduled: '12/29 19:30', estimated: '12/29 19:30', status: '準時', icon: 'plane-landing', color: 'text-main-red' },
+            ];
+        }
+
+        // --- 行程編輯/新增 (CRUD) 邏輯 ---
+
+        function getCategoryIcon(category) {
+            const icons = {
+                food: { icon: 'utensils', color: 'bg-accent-food' },
+                shopping: { icon: 'shopping-bag', color: 'bg-accent-shop' },
+                sightseeing: { icon: 'camera', color: 'bg-accent-sight' },
+                activity: { icon: 'ticket', color: 'bg-main-red' },
+                transport: { icon: 'car', color: 'bg-main-green' },
+                default: { icon: 'map-pin', color: 'bg-warm-gray' }
+            };
+            return icons[category] || icons.default;
+        }
+
+        function getTags(spot) {
+            // 嘗試從 tags 陣列或 desc 中提取，此處為簡化版
+            return (spot.tags || []).join(', ');
+        }
+
+        function startEdit(spotId) {
+            editingSpotId = spotId;
+            isAddingSpot = false; // 確保新增表單關閉
+            renderItinerary();
+        }
+
+        function cancelEdit() {
+            editingSpotId = null;
+            isAddingSpot = false;
+            renderItinerary();
+        }
+        
+        function handleDeleteSpot(spotId) {
+            if (!confirm('確認要刪除此行程項目嗎？')) return;
+
+            const dayData = itineraryData[currentDayIndex];
+            dayData.spots = dayData.spots.filter(spot => spot.id !== spotId);
+            renderItinerary();
+        }
+
+        function handleSaveSpot(event, spotId) {
+            event.preventDefault();
+            const form = event.target;
+            
+            const newSpotData = {
+                id: spotId || Date.now(), // 新增時使用新的 ID
+                category: form.elements['edit-category'].value,
+                name: form.elements['edit-name'].value,
+                desc: form.elements['edit-desc'].value,
+                address: form.elements['edit-address'].value,
+                tags: form.elements['edit-tags'].value.split(',').map(tag => tag.trim()).filter(tag => tag),
+                tip: form.elements['edit-tip'].value || null,
             };
 
-            const handleChange = (e) => {
-                setEditData({ ...editData, [e.target.name]: e.target.value });
-            };
+            const dayData = itineraryData[currentDayIndex];
 
-            const handleDelete = () => {
-                if (window.confirm("確定要刪除這個行程項目嗎？")) {
-                     deleteItem(dayIndex, locationIndex);
+            if (spotId) {
+                // 編輯現有項目
+                const index = dayData.spots.findIndex(spot => spot.id === spotId);
+                if (index !== -1) {
+                    dayData.spots[index] = newSpotData;
+                    editingSpotId = null;
                 }
-            };
+            } else {
+                // 新增項目
+                dayData.spots.push(newSpotData);
+                isAddingSpot = false;
+            }
+            
+            renderItinerary();
+        }
 
-            return (
-                <div className={`rounded-2xl border transition-all duration-200 overflow-hidden bg-white shadow-sm hover:shadow-md ${isEditing ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`}>
-                    <div className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                                {isEditing ? (
-                                    <>
-                                        <input
-                                            type="text"
-                                            name="name"
-                                            value={editData.name}
-                                            onChange={handleChange}
-                                            className="font-bold text-slate-800 text-lg leading-snug w-full border-b border-slate-300 focus:border-blue-500 outline-none p-1 mb-1"
-                                            placeholder="地點名稱"
-                                        />
-                                        <input
-                                            type="text"
-                                            name="desc"
-                                            value={editData.desc}
-                                            onChange={handleChange}
-                                            className="text-sm text-slate-500 w-full border-b border-slate-300 focus:border-blue-500 outline-none p-1 mt-1"
-                                            placeholder="簡短描述"
-                                        />
-                                    </>
-                                ) : (
-                                    <>
-                                        <h3 className="font-bold text-slate-800 text-lg leading-snug">{item.name}</h3>
-                                        <p className="text-sm text-slate-500 mt-1 leading-relaxed">{item.desc}</p>
-                                    </>
-                                )}
-                            </div>
-                            <div className={`p-2 rounded-xl shrink-0 ${isEditing ? 'bg-blue-50' : 'bg-slate-50'}`}>
-                                <Icon size={18} className={color} />
+        // --- 渲染函數：行程頁 (Itinerary) ---
+        
+        /**
+         * 渲染單個景點卡片 (包含編輯模式)
+         */
+        function renderSpotCard(spot) {
+            if (editingSpotId === spot.id) {
+                // 編輯模式：渲染表單
+                return renderSpotEditForm(spot);
+            }
+
+            // 顯示模式：渲染卡片
+            const { icon, color } = getCategoryIcon(spot.category);
+            const tagElements = (spot.tags || []).map(tag => {
+                let tagColor = 'bg-warm-gray';
+                if (tag === '必吃' || tag === '早餐' || tag === '晚餐') tagColor = 'bg-accent-food';
+                else if (tag === '必買' || tag === '潮流' || tag === '補貨') tagColor = 'bg-accent-shop';
+                else if (tag === '必拍' || tag === '打卡' || tag === '活動') tagColor = 'bg-accent-sight';
+
+                return `<span class="text-xs font-medium px-2 py-0.5 rounded-full text-snow-white ${tagColor}">${tag}</span>`;
+            }).join('');
+
+            const naverMapsUrl = spot.address ? `https://map.naver.com/p/search/${encodeURIComponent(spot.address)}` : '#';
+            const navButtonHtml = spot.address && spot.category !== 'transport' ? `
+                <a href="${naverMapsUrl}" target="_blank" class="flex items-center text-xs font-semibold text-main-green hover:text-green-700 transition-colors">
+                    <i data-lucide="map" class="w-4 h-4 mr-1"></i> Naver 地圖導航
+                </a>
+            ` : '';
+
+            const tipHtml = spot.tip ? `
+                <div class="bg-accent-gold/20 p-3 mt-3 rounded-xl border border-accent-gold/40">
+                    <p class="font-bold text-gray-800 text-sm mb-1 flex items-center"><i data-lucide="sparkles" class="w-4 h-4 mr-1 text-accent-shop"></i> 小貼士</p>
+                    <p class="text-xs text-gray-700">${spot.tip}</p>
+                </div>
+            ` : '';
+
+            return `
+                <div class="spot-card bg-snow-white p-4 mb-4 rounded-xl shadow-lg transition-all border-l-4 border-main-red/50">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center">
+                            <span class="p-2 rounded-full ${color} text-snow-white mr-3 shadow-md">
+                                <i data-lucide="${icon}" class="w-5 h-5"></i>
+                            </span>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-800">${spot.name}</h3>
+                                <div class="flex flex-wrap gap-1 mt-1">${tagElements}</div>
                             </div>
                         </div>
-
-                        {/* Controls */}
-                        <div className="mt-3 flex gap-2">
-                            {isEditing ? (
-                                <button
-                                    onClick={handleSave}
-                                    className="flex items-center justify-center flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-bold gap-1.5 hover:bg-blue-600 transition-colors shadow-md"
-                                >
-                                    <Icons.Save size={14} /> 儲存變更
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={() => setIsEditing(true)}
-                                    className="flex items-center justify-center flex-1 py-2 bg-slate-50 text-slate-600 rounded-lg text-sm font-bold gap-1.5 hover:bg-slate-100 active:bg-slate-200 transition-colors"
-                                >
-                                    <Icons.Pencil size={14} /> 編輯
-                                </button>
-                            )}
-                             <button
-                                onClick={handleDelete}
-                                className={`flex items-center justify-center px-3 py-2 ${isEditing ? 'bg-red-100 text-red-600' : 'bg-slate-50 text-slate-400'} rounded-lg text-sm font-bold hover:bg-red-200 transition-colors`}
-                            >
-                                <Icons.Trash size={14} />
+                        <div class="flex space-x-2">
+                            <button onclick="startEdit(${spot.id})" class="text-main-green hover:text-green-700 transition-colors p-1 rounded-full bg-main-green/10">
+                                <i data-lucide="edit" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="handleDeleteSpot(${spot.id})" class="text-main-red hover:text-red-700 transition-colors p-1 rounded-full bg-main-red/10">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
                             </button>
                         </div>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-3">${spot.desc}</p>
+                    
+                    ${spot.address ? `<p class="text-xs text-gray-500 mt-2 flex items-center"><i data-lucide="map-pin" class="w-3 h-3 mr-1"></i> ${spot.address}</p>` : ''}
+
+                    ${tipHtml}
+
+                    <div class="flex justify-end items-center mt-3 pt-3 border-t border-warm-gray/30">
+                        ${navButtonHtml || '<span></span>'}
                     </div>
                 </div>
-            );
-        };
+            `;
+        }
 
-        const TripApp = () => {
-            const [itinerary, setItinerary] = useState(null);
-            const [activeDayIndex, setActiveDayIndex] = useState(0);
-            const [loading, setLoading] = useState(true);
-            const [userId, setUserId] = useState(null);
-            const [error, setError] = useState(null);
+        /**
+         * 渲染景點編輯表單
+         */
+        function renderSpotEditForm(spot) {
+            const isNew = !spot.id;
+            const title = isNew ? '新增行程項目' : '編輯行程項目';
+            const categories = ['food', 'shopping', 'sightseeing', 'activity', 'transport', 'default'];
 
-            // --- Firestore Hooks & Logic ---
-
-            // 1. Initial Data Fetch / Listener Setup
-            useEffect(() => {
-                const handleAuthReady = (e) => {
-                    const authenticatedUserId = e.detail.userId;
-                    setUserId(authenticatedUserId);
-
-                    if (!window.db || !window.appId) {
-                        setError("資料庫未初始化，請檢查控制台。");
-                        setLoading(false);
-                        return;
-                    }
-
-                    // Firestore Path: /artifacts/{appId}/users/{userId}/trips/{docId}
-                    const docRef = doc(window.db, 
-                        `artifacts/${window.appId}/users/${authenticatedUserId}/trips`, 
-                        TRIP_DOC_ID
-                    );
-
-                    // Real-time listener
-                    const unsubscribe = onSnapshot(docRef, async (docSnap) => {
-                        if (docSnap.exists()) {
-                            // Data exists, load it
-                            console.log("Firestore: Document data loaded.");
-                            setItinerary(docSnap.data().data);
-                        } else {
-                            // Document does not exist, initialize with default data
-                            console.log("Firestore: No document found. Initializing...");
-                            const initialData = {
-                                createdAt: new Date(),
-                                data: DEFAULT_ITINERARY_DATA
-                            };
-                            await setDoc(docRef, initialData).catch(e => console.error("Error setting initial doc:", e));
-                            setItinerary(DEFAULT_ITINERARY_DATA);
-                        }
-                        setLoading(false);
-                    }, (err) => {
-                        console.error("Firestore Error:", err);
-                        setError(`資料讀取錯誤: ${err.message}`);
-                        setLoading(false);
-                    });
-
-                    return () => unsubscribe();
-                };
-
-                window.addEventListener('authReady', handleAuthReady);
-                
-                // Fallback for immediate load if auth is somehow ready before effect runs
-                if (window.globalUserId) {
-                    handleAuthReady({ detail: { userId: window.globalUserId } });
-                }
-
-                return () => window.removeEventListener('authReady', handleAuthReady);
-            }, []); // Run only once on mount
-
-            // 2. Data Update Function
-            const updateFirestore = useCallback(async (newItinerary) => {
-                if (!window.db || !userId) return;
-
-                const docRef = doc(window.db, 
-                    `artifacts/${window.appId}/users/${userId}/trips`, 
-                    TRIP_DOC_ID
-                );
-                
-                try {
-                    await updateDoc(docRef, { data: newItinerary, updatedAt: new Date() });
-                    console.log("Firestore: Data updated successfully.");
-                } catch (e) {
-                    console.error("Error updating document:", e);
-                    setError("數據保存失敗，請檢查網絡。");
-                }
-            }, [userId]);
-
-            // --- UI/State Management Functions ---
-
-            const updateItem = useCallback((dayIndex, locationIndex, newLocData) => {
-                const newItinerary = [...itinerary];
-                newItinerary[dayIndex].locations[locationIndex] = newLocData;
-                setItinerary(newItinerary);
-                updateFirestore(newItinerary);
-            }, [itinerary, updateFirestore]);
-
-            const deleteItem = useCallback((dayIndex, locationIndex) => {
-                const newItinerary = [...itinerary];
-                newItinerary[dayIndex].locations.splice(locationIndex, 1);
-                setItinerary(newItinerary);
-                updateFirestore(newItinerary);
-            }, [itinerary, updateFirestore]);
-            
-            const addItem = useCallback((dayIndex) => {
-                const newItinerary = [...itinerary];
-                const newLocation = {
-                    id: generateId(),
-                    type: "default",
-                    time: "Time",
-                    name: "新增地點 (點擊編輯)",
-                    desc: "點擊編輯按鈕修改細節",
-                    tag: "新增"
-                };
-                newItinerary[dayIndex].locations.push(newLocation);
-                setItinerary(newItinerary);
-                updateFirestore(newItinerary);
-            }, [itinerary, updateFirestore]);
-
-            // --- Render Logic ---
-
-            if (loading) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center">
-                        <p className="text-xl font-semibold text-slate-500 flex items-center gap-2">
-                            <Icons.RefreshCw size={20} className="animate-spin" />
-                            載入行程數據中...
-                        </p>
-                    </div>
-                );
-            }
-
-            if (error) {
-                 return (
-                    <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center bg-red-50">
-                        <Icons.X size={36} className="text-red-500 mb-4" />
-                        <h2 className="text-xl font-bold text-red-700">數據庫連接錯誤</h2>
-                        <p className="text-red-600 mt-2">{error}</p>
-                        <p className="text-sm text-red-500 mt-4">請檢查控制台 (Console) 或重新整理頁面。</p>
-                        <p className="text-xs text-slate-400 mt-8">User ID: {userId || 'N/A'}</p>
-                    </div>
-                );
-            }
-            
-            const activeDay = itinerary[activeDayIndex];
-
-            return (
-                <div className="min-h-screen bg-slate-50 font-sans text-slate-800 pb-12 max-w-md mx-auto shadow-2xl">
-                    {/* Header */}
-                    <div className="bg-white px-5 pt-8 pb-4 shadow-sm rounded-b-3xl sticky top-0 z-30">
-                        <div className="flex justify-between items-center mb-2">
-                            <div>
-                                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">首爾行程規劃器</h1>
-                                <p className="text-slate-500 text-sm font-medium">資料庫狀態: <span className="text-green-500 font-bold">已連接 (Firestore)</span></p>
-                            </div>
+            return `
+                <form onsubmit="handleSaveSpot(event, ${spot.id || ''})" class="bg-main-green/10 p-4 mb-4 rounded-xl shadow-inner border border-main-green/30">
+                    <h3 class="text-lg font-bold text-main-green mb-3">${title}</h3>
+                    <div class="space-y-2">
+                        <!-- 名稱 -->
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">名稱/標題</label>
+                            <input type="text" name="edit-name" value="${spot.name || ''}" required class="w-full p-2 border rounded-lg">
                         </div>
-                        <p className="text-[10px] text-slate-400 font-mono mt-1 break-all">
-                            User ID: {userId} (請勿外洩此 ID)
-                        </p>
-                    </div>
-
-                    {/* Date Tabs */}
-                    <div className="sticky top-[108px] z-20 bg-slate-50/95 backdrop-blur-md pt-4 pb-2 px-4 overflow-x-auto no-scrollbar border-b border-slate-200/50">
-                        <div className="flex gap-2 min-w-max">
-                        {itinerary.map((item, index) => (
-                            <button
-                            key={item.id}
-                            onClick={() => setActiveDayIndex(index)}
-                            className={`flex flex-col items-center justify-center w-[72px] py-2 rounded-xl transition-all duration-200 ${
-                                activeDayIndex === index
-                                ? 'bg-slate-900 text-white shadow-md transform scale-105'
-                                : 'bg-white text-slate-400 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            >
-                            <span className="text-[10px] font-bold uppercase opacity-80">{item.day}</span>
-                            <span className={`text-base font-bold leading-none mt-0.5 ${activeDayIndex === index ? 'text-blue-300' : 'text-slate-600'}`}>
-                                {item.date.split('/')[1]}
-                            </span>
-                            </button>
-                        ))}
+                        <!-- 分類 -->
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">分類</label>
+                            <select name="edit-category" class="w-full p-2 border rounded-lg">
+                                ${categories.map(cat => `<option value="${cat}" ${spot.category === cat ? 'selected' : ''}>${cat.charAt(0).toUpperCase() + cat.slice(1)}</option>`).join('')}
+                            </select>
                         </div>
-                    </div>
-
-                    {/* Content */}
-                    <div className="px-5 mt-6">
-                        <div className="mb-6 animate-fade-in">
-                            <h2 className="text-xl font-bold text-slate-900">{activeDay.title}</h2>
-                            <p className="text-sm text-slate-500 mt-1">{activeDay.desc}</p>
+                        <!-- 描述 -->
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">描述</label>
+                            <textarea name="edit-desc" class="w-full p-2 border rounded-lg">${spot.desc || ''}</textarea>
                         </div>
-
-                        <div className="relative border-l-2 border-slate-200 ml-3 space-y-8 pb-10">
-                            {activeDay.locations.map((loc, idx) => (
-                                <div key={loc.id} className="relative pl-8 group">
-                                    {/* Timeline Dot */}
-                                    <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white border-4 border-slate-800 transition-colors`}></div>
-                                    
-                                    {/* Time & Tag (Editable in place) */}
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <input
-                                            type="text"
-                                            value={loc.time}
-                                            onChange={(e) => {
-                                                const newItinerary = [...itinerary];
-                                                newItinerary[activeDayIndex].locations[idx].time = e.target.value;
-                                                setItinerary(newItinerary);
-                                                // Optional: Debounce or save on blur for time field
-                                            }}
-                                            onBlur={() => updateFirestore(itinerary)}
-                                            className="text-xs font-bold text-slate-600 uppercase tracking-wide w-20 p-1 rounded border border-slate-200 focus:border-blue-400 outline-none"
-                                            placeholder="時間"
-                                        />
-                                        <input
-                                            type="text"
-                                            value={loc.tag}
-                                            onChange={(e) => {
-                                                const newItinerary = [...itinerary];
-                                                newItinerary[activeDayIndex].locations[idx].tag = e.target.value;
-                                                setItinerary(newItinerary);
-                                                // Optional: Debounce or save on blur for tag field
-                                            }}
-                                            onBlur={() => updateFirestore(itinerary)}
-                                            className={`text-[10px] font-bold px-2 py-0.5 rounded text-white bg-slate-400 w-auto max-w-24 p-1 rounded border border-slate-200 focus:border-blue-400 outline-none`}
-                                            placeholder="標籤"
-                                            style={{ backgroundColor: loc.tag ? 'var(--tw-color-blue-500)' : 'var(--tw-color-slate-400)' }}
-                                        />
-                                    </div>
-
-                                    <EditableTripItem 
-                                        item={loc}
-                                        dayIndex={activeDayIndex}
-                                        locationIndex={idx}
-                                        updateItem={updateItem}
-                                        deleteItem={deleteItem}
-                                    />
-                                </div>
-                            ))}
-                            
-                            {/* Add New Item Button */}
-                            <div className="relative pl-8">
-                                <div className="absolute -left-[9px] top-4 w-4 h-4 rounded-full bg-slate-300 border-4 border-slate-50"></div>
-                                <button
-                                    onClick={() => addItem(activeDayIndex)}
-                                    className="mt-4 flex items-center justify-center w-full py-3 bg-indigo-500 text-white rounded-xl text-md font-bold gap-2 hover:bg-indigo-600 active:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
-                                >
-                                    <Icons.Plus size={18} />
-                                    新增行程項目
-                                </button>
-                            </div>
+                        <!-- 地址/地點 -->
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">地址 (Naver Map 關鍵字)</label>
+                            <input type="text" name="edit-address" value="${spot.address || ''}" class="w-full p-2 border rounded-lg">
+                        </div>
+                        <!-- 標籤 -->
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">標籤 (以逗號分隔，如: 必吃, 打卡)</label>
+                            <input type="text" name="edit-tags" value="${getTags(spot)}" class="w-full p-2 border rounded-lg">
+                        </div>
+                        <!-- 小貼士 -->
+                        <div>
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">小貼士/備註</label>
+                            <input type="text" name="edit-tip" value="${spot.tip || ''}" class="w-full p-2 border rounded-lg">
                         </div>
                     </div>
                     
-                    {/* Footer */}
-                    <div className="text-center pb-8 pt-4 border-t border-slate-100 mt-4">
-                        <p className="text-xs text-slate-300 font-medium">Data persisted via Firestore • 2024</p>
+                    <div class="flex justify-end space-x-2 mt-4">
+                        <button type="button" onclick="cancelEdit()" class="px-4 py-2 text-sm font-bold text-gray-700 bg-warm-gray/30 rounded-lg hover:bg-warm-gray/50 transition-colors">取消</button>
+                        <button type="submit" class="px-4 py-2 text-sm font-bold text-snow-white bg-main-red rounded-lg hover:bg-main-red/90 transition-colors">儲存</button>
+                    </div>
+                </form>
+            `;
+        }
+        
+        /**
+         * 渲染新增景點的按鈕/表單
+         */
+        function renderAddSpotToggle() {
+            if (isAddingSpot) {
+                // 渲染新增表單
+                return renderSpotEditForm({ category: 'sightseeing', tags: ['新增'] });
+            } else {
+                // 渲染新增按鈕
+                return `
+                    <button onclick="isAddingSpot = true; editingSpotId = null; renderItinerary();" class="w-full py-3 mt-4 mb-8 bg-main-red text-snow-white rounded-xl font-bold hover:bg-main-red/90 transition-colors shadow-md flex items-center justify-center">
+                        <i data-lucide="plus-circle" class="w-5 h-5 mr-2"></i> 新增行程項目
+                    </button>
+                `;
+            }
+        }
+
+
+        function renderItinerary() {
+            const data = itineraryData[currentDayIndex];
+
+            // 1. 渲染頂部日期切換
+            const daySelectors = itineraryData.map((d, index) => {
+                const dayDisplay = index + 1;
+                const dateString = itineraryData[index].date.split(' ')[0];
+                return `
+                    <button 
+                        class="day-select-btn flex-shrink-0 px-3 py-1 text-sm font-semibold rounded-full transition-all duration-300 ${index === currentDayIndex ? 'bg-main-red text-snow-white shadow-lg' : 'bg-warm-gray/20 text-gray-700 hover:bg-warm-gray/40'}"
+                        data-day-index="${index}"
+                    >
+                        ${dateString} (Day ${dayDisplay})
+                    </button>
+                `;
+            }).join('');
+
+            const headerHtml = `
+                <div class="mb-4 sticky top-[4.5rem] bg-bg-color p-2 rounded-xl shadow-inner z-10">
+                    <div class="flex overflow-x-auto space-x-2 pb-1 scrollbar-hide">
+                        ${daySelectors}
                     </div>
                 </div>
-            );
-        };
+                <h2 class="text-xl font-extrabold text-main-green mb-4 flex items-center p-2 rounded-lg bg-main-green/10">
+                    <i data-lucide="star" class="w-5 h-5 mr-2 text-accent-gold"></i> Day ${currentDayIndex + 1}: ${data.route}
+                </h2>
+            `;
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<TripApp />);
+            // 2. 渲染每日景點卡片
+            const spotCardsHtml = data.spots.map(renderSpotCard).join('');
+
+            // 3. 渲染背景資訊 (穿著/雪況)
+            const backgroundInfoHtml = `
+                <div class="mt-8 p-4 bg-main-red/10 rounded-2xl border border-main-red/20">
+                    <p class="font-bold text-main-green text-base mb-2 flex items-center"><i data-lucide="shirt" class="w-4 h-4 mr-2"></i> 建議穿著</p>
+                    <p class="text-sm text-gray-800">${data.attire}</p>
+                    <div class="mt-3 pt-3 border-t border-main-green/30">
+                        <p class="font-bold text-main-green text-base mb-1 flex items-center"><i data-lucide="snowflake" class="w-4 h-4 mr-2"></i> 雪況提示</p>
+                        <p class="text-sm text-gray-800">${data.snow}</p>
+                    </div>
+                </div>
+            `;
+
+
+            document.getElementById('app-content').innerHTML = `
+                ${headerHtml}
+                <div id="itinerary-cards-container">
+                    ${spotCardsHtml || '<p class="text-center text-warm-gray mt-8 py-4 bg-gray-50 rounded-xl">本天行程尚未規劃，請點擊下方按鈕新增。</p>'}
+                </div>
+                ${renderAddSpotToggle()}
+                ${backgroundInfoHtml}
+            `;
+
+            // 重新載入 Lucide 圖標
+            lucide.createIcons();
+            
+            // 綁定日期切換事件
+            document.querySelectorAll('.day-select-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const newIndex = parseInt(e.currentTarget.dataset.dayIndex);
+                    if (newIndex !== currentDayIndex) {
+                        currentDayIndex = newIndex;
+                        editingSpotId = null; // 切換日期時關閉編輯
+                        isAddingSpot = false; // 切換日期時關閉新增
+                        renderItinerary();
+                    }
+                });
+            });
+        }
+
+        // --- 渲染函數：消費紀錄 (Finance) (保留) ---
+        
+        function renderFinance() {
+            const contentDiv = document.getElementById('app-content');
+            contentDiv.innerHTML = `
+                <h2 class="text-2xl font-bold text-main-green mb-6 pt-2 flex items-center"><i data-lucide="wallet" class="w-6 h-6 mr-2"></i> 消費紀錄 & 換匯</h2>
+                <div id="exchange-rate-section">
+                    <p class="text-center text-warm-gray py-8">正在載入即時匯率...</p>
+                </div>
+                <div id="expense-record-section">
+                    ${renderExpenseSummary()}
+                    <h3 class="text-xl font-bold text-gray-800 mt-6 mb-3 border-b border-warm-gray/30 pb-1 flex items-center"><i data-lucide="receipt" class="w-5 h-5 mr-2 text-main-green"></i> 每日開支</h3>
+                    ${renderExpenseList()}
+                    ${renderAddExpenseForm()}
+                </div>
+            `;
+
+            lucide.createIcons();
+            fetchExchangeRate().then(renderExchangeRate);
+            document.getElementById('add-expense-form')?.addEventListener('submit', handleAddExpense);
+        }
+
+        function renderExchangeRate() {
+            const { baseCurrency, targetCurrency, rate, lastUpdated, exchangeStatus } = financeState;
+            const rateSection = document.getElementById('exchange-rate-section');
+            rateSection.innerHTML = `
+                <div class="bg-accent-gold/20 p-4 rounded-2xl shadow-md border border-accent-gold/50">
+                    <h3 class="text-lg font-bold text-gray-800 mb-2 flex items-center justify-between">
+                        <span class="flex items-center"><i data-lucide="rotate-cw" class="w-5 h-5 mr-2 text-main-green"></i> 即時對換率</span>
+                        <span class="text-xs text-warm-gray">狀態: ${exchangeStatus}</span>
+                    </h3>
+                    <div class="text-center bg-snow-white p-3 rounded-xl">
+                        <p class="text-3xl font-extrabold text-accent-shop">1 ${baseCurrency} = ${rate} ${targetCurrency}</p>
+                    </div>
+                    <p class="text-xs text-warm-gray mt-2 text-right">最後更新: ${lastUpdated}</p>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function calculateExpenseSummary() {
+            const totalHKD = financeState.expenses.reduce((sum, exp) => sum + exp.amountHKD, 0);
+            const remaining = financeState.budget - totalHKD;
+            return { totalHKD, remaining };
+        }
+
+        function renderExpenseSummary() {
+            const { totalHKD, remaining } = calculateExpenseSummary();
+            const remainingColor = remaining >= 0 ? 'text-main-green' : 'text-main-red';
+            const remainingText = remaining >= 0 ? '剩餘預算' : '已超支';
+
+            return `
+                <div class="bg-main-green/10 p-4 rounded-2xl shadow-inner grid grid-cols-2 gap-4 text-center">
+                    <div>
+                        <p class="text-sm text-gray-600 font-medium">總預算 (HKD)</p>
+                        <p class="text-xl font-extrabold text-main-green mt-1">$${financeState.budget.toFixed(1)}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600 font-medium">總花費 (HKD)</p>
+                        <p class="text-xl font-extrabold text-main-red mt-1">$${totalHKD.toFixed(1)}</p>
+                    </div>
+                    <div class="col-span-2 mt-2 pt-2 border-t border-main-green/20">
+                        <p class="text-base font-bold ${remainingColor}">${remainingText} ($${Math.abs(remaining).toFixed(1)})</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderExpenseList() {
+            if (financeState.expenses.length === 0) {
+                return '<p class="text-center text-warm-gray mt-4">尚未紀錄任何消費。</p>';
+            }
+
+            return `
+                <div class="space-y-2 max-h-60 overflow-y-auto">
+                    ${financeState.expenses.map(exp => `
+                        <div class="flex justify-between items-center bg-main-red/10 p-3 rounded-xl border border-main-red/20">
+                            <div>
+                                <p class="text-sm font-semibold text-gray-800">${exp.item}</p>
+                                <p class="text-xs text-warm-gray">Day ${exp.day} | ${exp.category}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-base font-bold text-main-red">₩${exp.amountKRW.toLocaleString()}</p>
+                                <p class="text-xs text-gray-600">$${exp.amountHKD.toFixed(1)}</p>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function renderAddExpenseForm() {
+            return `
+                <h3 class="text-xl font-bold text-gray-800 mt-6 mb-3 border-b border-warm-gray/30 pb-1 flex items-center"><i data-lucide="plus-circle" class="w-5 h-5 mr-2 text-main-green"></i> 新增紀錄</h3>
+                <form id="add-expense-form" class="space-y-3 bg-accent-sight/20 p-4 rounded-xl border border-accent-sight/30">
+                    <div>
+                        <label class="text-xs font-semibold text-gray-700 block mb-1">項目描述</label>
+                        <input type="text" id="expense-item" required class="w-full p-2 border rounded-lg">
+                    </div>
+                    <div class="flex space-x-3">
+                        <div class="w-1/2">
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">韓圜金額 (KRW)</label>
+                            <input type="number" step="100" id="amount-krw" required class="w-full p-2 border rounded-lg">
+                        </div>
+                        <div class="w-1/2">
+                            <label class="text-xs font-semibold text-gray-700 block mb-1">分類</label>
+                            <select id="expense-category" class="w-full p-2 border rounded-lg">
+                                <option value="餐飲">餐飲</option>
+                                <option value="購物">購物</option>
+                                <option value="交通">交通</option>
+                                <option value="活動">活動</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-main-green text-snow-white p-3 rounded-xl font-bold hover:bg-main-green/90 transition-colors shadow-md">
+                        確認新增
+                    </button>
+                    <p id="finance-error" class="text-xs text-main-red text-center mt-2"></p>
+                </form>
+            `;
+        }
+
+        function handleAddExpense(event) {
+            event.preventDefault();
+            const item = document.getElementById('expense-item').value;
+            const amountKRW = parseFloat(document.getElementById('amount-krw').value);
+            const category = document.getElementById('expense-category').value;
+            const errorElement = document.getElementById('finance-error');
+            errorElement.textContent = '';
+
+            if (!item || isNaN(amountKRW) || amountKRW <= 0) {
+                errorElement.textContent = '請輸入有效的項目描述和韓圜金額。';
+                return;
+            }
+
+            const rate = financeState.rate;
+            const amountHKD = amountKRW / rate;
+
+            const newExpense = {
+                id: Date.now(),
+                day: currentDayIndex + 1,
+                item,
+                amountKRW: parseFloat(amountKRW.toFixed(0)),
+                amountHKD: parseFloat(amountHKD.toFixed(1)),
+                category
+            };
+
+            financeState.expenses.push(newExpense);
+            document.getElementById('expense-item').value = '';
+            document.getElementById('amount-krw').value = '';
+            
+            const listContainer = document.querySelector('.space-y-2.max-h-60');
+            if (listContainer) {
+                document.getElementById('expense-record-section').querySelector('div:first-child').innerHTML = renderExpenseSummary();
+                listContainer.innerHTML = renderExpenseList();
+                listContainer.scrollTop = listContainer.scrollHeight;
+                lucide.createIcons();
+            }
+        }
+
+
+        // --- 渲染函數：指南 (Guide) (保留) ---
+
+        function renderGuide() {
+            const contentDiv = document.getElementById('app-content');
+            contentDiv.innerHTML = `
+                <h2 class="text-2xl font-bold text-main-green mb-6 pt-2 flex items-center"><i data-lucide="map" class="w-6 h-6 mr-2"></i> 旅遊指南 & 航班</h2>
+                
+                <h3 class="text-xl font-bold text-gray-800 mb-3 border-b border-warm-gray/30 pb-1 flex items-center"><i data-lucide="plane" class="w-5 h-5 mr-2 text-main-green"></i> 航班狀況追蹤</h3>
+                <div id="flight-status-section" class="space-y-3">
+                    <div class="text-center py-8 bg-accent-gold/20 rounded-xl">
+                        <i data-lucide="loader-2" class="w-6 h-6 mx-auto animate-spin text-main-green"></i>
+                        <p class="text-sm text-gray-700 mt-2">正在查詢最新航班狀態...</p>
+                    </div>
+                </div>
+
+                <h3 class="text-xl font-bold text-gray-800 mt-8 mb-3 border-b border-warm-gray/30 pb-1 flex items-center"><i data-lucide="book-open-text" class="w-5 h-5 mr-2 text-main-green"></i> 實用資訊</h3>
+                <div class="space-y-4">
+                    <div class="p-4 bg-accent-sight/20 rounded-xl shadow-md border border-accent-sight/30">
+                        <h4 class="text-lg font-bold text-main-green mb-2">交通卡與換匯</h4>
+                        <p class="text-sm text-gray-700">建議在機場購買 T-Money 卡，並在明洞換匯所換取更優惠匯率。地鐵公車都適用。</p>
+                    </div>
+                    <div class="p-4 bg-accent-sight/20 rounded-xl shadow-md border border-accent-sight/30">
+                        <h4 class="text-lg font-bold text-main-green mb-2">網路與通訊</h4>
+                        <p class="text-sm text-gray-700">建議使用 SIM 卡或租用 Wi-Fi 機。韓國導航請務必搭配 Naver Map / Kakao Map 使用。</p>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+            
+            fetchFlightStatus().then(flights => {
+                const flightHtml = flights.map(flight => `
+                    <div class="flex items-center bg-snow-white p-4 rounded-xl shadow-sm border-l-4 ${flight.code === 'UO626' ? 'border-main-green' : 'border-main-red'}">
+                        <i data-lucide="${flight.icon}" class="w-8 h-8 mr-4 ${flight.color}"></i>
+                        <div class="flex-grow">
+                            <p class="text-sm font-bold text-gray-800">${flight.code} (${flight.status})</p>
+                            <p class="text-xs text-warm-gray">${flight.route}</p>
+                            <p class="text-xs font-semibold text-gray-600 mt-1">預計: ${flight.scheduled} → 實際: ${flight.estimated}</p>
+                        </div>
+                    </div>
+                `).join('');
+                document.getElementById('flight-status-section').innerHTML = flightHtml;
+                lucide.createIcons();
+            });
+        }
+
+
+        // --- 渲染函數：天氣 (Weather) (保留) ---
+
+        function renderWeather() {
+             const contentDiv = document.getElementById('app-content');
+             const title = '☁️ 首爾五日天氣';
+             const contentHtml = `
+                <div class="text-center p-6 bg-main-red/10 rounded-2xl border border-main-red/20 mb-4">
+                    <p class="text-xl font-bold text-main-green">12/25 - 12/29</p>
+                    <p class="text-4xl my-3 text-main-green">平均氣溫 -5°C ~ 3°C</p>
+                    <p class="text-sm text-gray-700">多雲/晴，日夜溫差大。請務必攜帶足夠保暖衣物。</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    ${[25, 26, 27, 28, 29].map(d => `
+                        <div class="p-4 bg-snow-white rounded-xl shadow-sm border border-warm-gray/30 text-center">
+                            <p class="font-bold text-lg text-gray-800">12/${d}</p>
+                            <p class="text-3xl my-2">
+                                ${d % 2 === 0 ? '<i data-lucide="cloud" class="w-8 h-8 mx-auto text-main-green"></i>' : '<i data-lucide="sun" class="w-8 h-8 mx-auto text-accent-gold"></i>'}
+                            </p>
+                            <p class="text-sm text-gray-600">低: -7°C / 高: 1°C</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            contentDiv.innerHTML = `
+                <h2 class="text-2xl font-bold text-main-green mb-6 pt-2">${title}</h2>
+                ${contentHtml}
+            `;
+            lucide.createIcons();
+        }
+
+
+        // --- 通用 Tab 切換邏輯 ---
+
+        function renderTabContent(tabName) {
+            document.getElementById('app-content').innerHTML = '';
+
+            // 重置行程編輯/新增狀態
+            editingSpotId = null;
+            isAddingSpot = false;
+
+            if (tabName === 'itinerary') {
+                renderItinerary();
+            } else if (tabName === 'guide') {
+                renderGuide();
+            } else if (tabName === 'weather') {
+                renderWeather();
+            } else if (tabName === 'finance') {
+                renderFinance();
+            }
+        }
+
+        /**
+         * 導覽列切換邏輯
+         */
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const tabName = e.currentTarget.dataset.tab;
+                
+                document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('nav-active'));
+                
+                e.currentTarget.classList.add('nav-active');
+                
+                renderTabContent(tabName);
+            });
+        });
+
+        // 頁面加載完成後，初始化並渲染行程頁面
+        window.onload = function() {
+            // 將 CRUD 函數暴露到全局，以便在 HTML 內聯事件中使用
+            window.startEdit = startEdit;
+            window.cancelEdit = cancelEdit;
+            window.handleSaveSpot = handleSaveSpot;
+            window.handleDeleteSpot = handleDeleteSpot;
+            window.isAddingSpot = isAddingSpot; // 暴露狀態
+            window.renderItinerary = renderItinerary; // 暴露渲染函數
+
+            renderItinerary();
+        }
+
     </script>
 </body>
 </html>
+
