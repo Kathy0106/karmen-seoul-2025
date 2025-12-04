@@ -195,7 +195,7 @@
 
         // --- 全域應用程式狀態 ---
         let state = {
-            currentTab: 'budget', // 預設切換到消費分頁以展示新功能
+            currentTab: 'itinerary', // 預設為行程頁面
             currentDayIndex: 0,
             tripData: defaultTripData, 
             exchangeRate: { rate: 0.0, source: 'Loading...' },
@@ -214,7 +214,7 @@
             '其他': 'more-horizontal'
         };
 
-        // --- Firebase Firestore 數據處理 ---
+        // --- Firebase Firestore 數據處理 (保持不變) ---
         const TRIP_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/seoul_trip_planner/trip_data`;
 
         window.loadTripData = async (forceDefault = false) => {
@@ -367,7 +367,7 @@
             renderApp();
         }
 
-        // --- LLM API 呼叫：獲取即時匯率 ---
+        // --- LLM API 呼叫：獲取即時匯率 (保持不變) ---
         async function fetchExchangeRate() {
             if (!state.tripData) return; // 確保有數據才執行
 
@@ -456,7 +456,7 @@
             }
         }
         
-        // --- 預算編輯 Modal ---
+        // --- 預算編輯 Modal (保持不變) ---
         function openEditBudgetModal() {
             if (!state.tripData) return;
             const currentDay = state.tripData.budget.daily[state.currentDayIndex];
@@ -496,7 +496,7 @@
             closeEditBudgetModal();
         }
         
-        // --- 新增消費 Modal ---
+        // --- 新增消費 Modal (保持不變) ---
         function openAddExpenseModal(dayIndex) {
             const modal = document.getElementById('add-expense-modal');
             const baseCurrency = state.tripData.budget.baseCurrency; // HKD
@@ -510,7 +510,7 @@
             document.getElementById('expense-currency').value = targetCurrency; // 預設為當地貨幣 KRW
             document.getElementById('modal-day-name').textContent = state.tripData.itinerary[dayIndex].dayName;
             
-            // ** Bug Fix 2: 更新匯率顯示 **
+            // 更新匯率顯示
             const rateDisplay = rate > 0 ? `${rate.toFixed(2)} ${targetCurrency}` : '載入中...';
             document.getElementById('modal-exchange-rate').textContent = `1 ${baseCurrency} ≈ ${rateDisplay}`;
             
@@ -543,7 +543,6 @@
             const baseCurrency = state.tripData.budget.baseCurrency; // HKD
             const targetCurrency = state.tripData.budget.targetCurrency; // KRW
 
-            // ** Bug Fix 1: 匯率檢查提前和邏輯修正 **
             if (currency === targetCurrency && rate <= 0) {
                  const messageBox = document.getElementById('message-box');
                  messageBox.innerHTML = `<div class="bg-accent-red text-snow-white p-3 rounded-lg shadow-md">匯率載入失敗 (${rate.toFixed(2)}), 無法準確轉換 ${targetCurrency}。請稍後重試。</div>`;
@@ -581,9 +580,6 @@
             
             window.saveTripData(newTripData);
             closeAddExpenseModal();
-            // 切換到 Budget 頁面查看
-            switchTab('budget');
-            selectDay(dayIndex);
         }
         
         // --- 行程事件編輯 (保持不變) ---
@@ -633,6 +629,20 @@
             }
         }
 
+        /**
+         * 根據天氣條件字符串返回 Lucide 圖標名稱。
+         * @param {string} condition - 天氣條件字符串 (e.g., "晴 (API載入中)", "雪")
+         * @returns {string} Lucide 圖標名稱
+         */
+        function getWeatherIcon(condition) {
+            if (condition.includes('晴')) return 'sun';
+            if (condition.includes('陰')) return 'cloud';
+            if (condition.includes('雪')) return 'cloud-snow';
+            if (condition.includes('雨')) return 'cloud-rain';
+            if (condition.includes('多雲')) return 'cloudy';
+            return 'sun';
+        }
+
 
         // --- 渲染各分頁內容 ---
 
@@ -658,7 +668,7 @@
                 <button onclick="selectDay(${index})"
                     class="flex-shrink-0 px-4 py-2 mx-1 rounded-full text-sm font-bold transition-all duration-200 whitespace-nowrap
                     ${index === state.currentDayIndex ? 'bg-fuji-blue text-snow-white shadow-md' : 'bg-snow-white text-gray-700 hover:bg-fuji-blue/10'}">
-                    ${day.dayName} (${fullDate(day.date)})
+                    ${day.dayName} (${fullDate(day.date).substring(0, 5)})
                 </button>
             `).join('');
             
@@ -670,7 +680,7 @@
                     
                     <!-- 每日天氣 -->
                     <div class="flex items-center space-x-2 text-md text-gray-700 mb-3">
-                        <i data-lucide="sun" class="w-5 h-5 text-accent-yellow"></i>
+                        <i data-lucide="${getWeatherIcon(currentDay.weather)}" class="w-5 h-5 text-accent-yellow"></i>
                         <span>即時天氣：${currentDay.weather}</span>
                     </div>
 
@@ -793,7 +803,49 @@
             if (!state.tripData) return `<div class="p-8 text-center text-accent-red">指南資料載入錯誤。</div>`;
 
             const f = state.tripData.flights;
+            const tripYear = state.tripData.dates.substring(0, 4);
+            
+            // --- 1. 每日天氣預報卡片 (更新為網格佈局) ---
+            const weatherGridItems = state.tripData.itinerary.map(day => {
+                // 假設 weather 格式為 "8°C, 晴 (API載入中)"
+                const parts = day.weather.split(', ');
+                const temp = parts[0] || 'N/A';
+                // 提取天氣狀況，去除括號內的資訊
+                const condition = parts[1] ? parts[1].split(' (')[0] : '未知';
+                const icon = getWeatherIcon(condition); 
+                const [month, dayNum] = day.date.split('/');
 
+                return `
+                    <div class="p-3 bg-warm-gray rounded-xl shadow-lg flex flex-col justify-between aspect-square hover:bg-white transition-colors">
+                        <div class="text-xs text-gray-500 font-medium">
+                            ${day.dayName}
+                        </div>
+                        <div class="flex flex-col items-center justify-center flex-grow">
+                            <i data-lucide="${icon}" class="w-8 h-8 text-fuji-blue mb-1"></i>
+                            <p class="text-2xl font-black text-gray-800">${temp}</p>
+                            <p class="text-xs text-gray-600 mt-1">${condition}</p>
+                        </div>
+                        <div class="text-xs text-right font-bold text-gray-800 border-t border-gray-300 pt-1 mt-1">
+                             ${dayNum}/${month}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const weatherCard = `
+                <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-l-4 border-accent-yellow">
+                    <h3 class="text-lg font-bold text-gray-700 mb-3 flex items-center"><i data-lucide="cloud-sun" class="w-5 h-5 mr-2 text-accent-yellow"></i> 每日天氣預報</h3>
+                    <div class="grid grid-cols-3 gap-4"> 
+                        ${weatherGridItems}
+                    </div>
+                    <p class="text-xs text-gray-500 mt-3">天氣資料為模擬數據，實際情況請以當地預報為準。</p>
+                </div>
+            `;
+
+            // Fix: 匯率為 0 時顯示載入中
+            const rateDisplay = state.exchangeRate.rate === 0.0 ? state.exchangeRate.source : state.exchangeRate.rate.toFixed(2);
+            
+            // --- 2. 航班卡片 ---
             const flightCard = (type, data) => `
                 <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-l-4 ${type === 'outbound' ? 'border-accent-red' : 'border-fuji-blue'}">
                     <div class="flex items-center justify-between mb-2">
@@ -812,9 +864,7 @@
                 </div>
             `;
             
-            // Fix: 匯率為 0 時顯示載入中
-            const rateDisplay = state.exchangeRate.rate === 0.0 ? state.exchangeRate.source : state.exchangeRate.rate.toFixed(2);
-            
+            // --- 3. 匯率卡片 ---
             const exchangeRateCard = `
                 <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-t-4 border-accent-yellow">
                     <h3 class="text-lg font-bold text-gray-700 mb-2 flex items-center"><i data-lucide="dollar-sign" class="w-5 h-5 mr-2 text-accent-yellow"></i> 即時對換率</h3>
@@ -830,6 +880,7 @@
                 </div>
             `;
 
+            // --- 4. 地圖卡片 ---
             const mapLinkCard = `
                 <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-r-4 border-accent-green">
                     <h3 class="text-lg font-bold text-gray-700 mb-2 flex items-center"><i data-lucide="map-pin" class="w-5 h-5 mr-2 text-accent-green"></i> 韓國首爾地圖</h3>
@@ -840,6 +891,7 @@
                 </div>
             `;
             
+            // --- 5. 用戶 ID 卡片 ---
              const userIdCard = `
                 <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-b-4 border-warm-gray">
                     <h3 class="text-sm font-bold text-gray-700 mb-2 flex items-center"><i data-lucide="user" class="w-4 h-4 mr-2 text-fuji-blue"></i> 用戶 ID (分享/除錯用)</h3>
@@ -851,6 +903,7 @@
             return `
                 <div class="p-4 pb-20">
                     <h2 class="text-xl font-bold text-fuji-blue mb-4">旅行指南與資訊</h2>
+                    ${weatherCard}
                     ${flightCard('outbound', f.outbound)}
                     ${flightCard('inbound', f.inbound)}
                     ${exchangeRateCard}
@@ -1076,10 +1129,6 @@
         .content-container {
             min-height: 100vh;
         }
-        /* 彈出視窗動畫 */
-        .modal {
-            transition: opacity 0.3s ease, visibility 0.3s ease;
-        }
         /* 隱藏滾動條但保持滾動功能 (僅限 Webkit 瀏覽器，如 Chrome/Safari) */
         #day-selector-buttons::-webkit-scrollbar {
             display: none;
@@ -1087,6 +1136,10 @@
         #day-selector-buttons {
             -ms-overflow-style: none;  /* IE and Edge */
             scrollbar-width: none;  /* Firefox */
+        }
+        /* 彈出視窗動畫 */
+        .modal {
+            transition: opacity 0.3s ease, visibility 0.3s ease;
         }
     </style>
 </head>
