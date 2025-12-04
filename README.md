@@ -1,1 +1,1 @@
-# karmen-seoul-2025
+# KS-seoul-2025
