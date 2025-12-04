@@ -111,7 +111,8 @@
             }
         }
 
-        // --- 預設行程數據 (已將數據從底部移動到頂部，確保同步可用) ---
+        // --- 預設行程數據 ---
+        // 保持與上一次一致
         const initialItinerary = [
             { date: "12/25", dayName: "Day 1", mainArea: "安國, 弘大, 延南洞, 明洞", weather: "8°C, 晴 (API載入中)",
                 dressCode: "建議: 極厚外套、圍巾、手套 (Heavy coat, scarf, gloves). 雪況: 無積雪 (No snow).",
@@ -165,12 +166,12 @@
                     { time: "09:00", category: "食物", name: "Egg Drop (明洞) (에그드랍)", address: "서울 중구 명동길 24", notes: "早餐", tags: ["必吃"], naverId: "52345" },
                     { time: "10:30", category: "購物", name: "明洞最後掃貨", address: "서울 중구 명동길 일대", notes: "手信、零食補貨", tags: ["必買"], naverId: "52346" },
                     { time: "13:00", category: "食物", name: "最後午餐：豐川鰻魚 (풍천장어)", address: "서울 중구 명동4길 10", notes: "滋補一下", tags: ["必吃"], naverId: "52347" },
-                    { time: "15:00", category: "交通", name: "回酒店拎行李 → 機場", address: "", notes: "預留充足時間", tags: [], naverId: "" },
+                    { time: "15:00", category: "交通", name: "回酒店拎行李 → 機場", address: "", notes: "預留充足時間", tags: ["必買"], naverId: "" },
                 ]
             }
         ];
 
-        // 預設的旅行數據結構 (已更新名稱)
+        // 預設的旅行數據結構 (已更新 daily 預算結構以包含 expenses 數組)
         const defaultTripData = {
             tripName: "首爾聖誕旅行",
             dates: "2025/12/25 - 2025/12/29", // YYYY/MM/DD - YYYY/MM/DD
@@ -185,8 +186,8 @@
                 daily: initialItinerary.map(day => ({
                     date: day.date, // MM/DD
                     budget: 1000,
-                    spent: 0,
-                    expenses: []
+                    // spent 欄位將會在 renderBudget 中根據 expenses 數組計算得出
+                    expenses: [] // 新增詳細消費紀錄
                 }))
             },
             itinerary: initialItinerary,
@@ -194,14 +195,14 @@
 
         // --- 全域應用程式狀態 ---
         let state = {
-            currentTab: 'itinerary', // itinerary | guide | budget
+            currentTab: 'budget', // 預設切換到消費分頁以展示新功能
             currentDayIndex: 0,
-            tripData: defaultTripData, // *** 立即設定預設數據 ***
+            tripData: defaultTripData, 
             exchangeRate: { rate: 0.0, source: 'Loading...' },
             exchangeAttempts: 0
         };
 
-        // 景點分類對應的圖標
+        // 景點分類對應的圖標 (也用於消費類別)
         const categoryIcons = {
             '食物': 'utensils',
             '活動': 'party-popper',
@@ -209,9 +210,10 @@
             '景點': 'map-pin',
             '酒店': 'bed',
             '交通': 'car',
-            '甜品': 'ice-cream'
+            '甜品': 'ice-cream',
+            '其他': 'more-horizontal'
         };
-        
+
         // --- Firebase Firestore 數據處理 ---
         const TRIP_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/seoul_trip_planner/trip_data`;
 
@@ -233,12 +235,12 @@
                 if (docSnap.exists()) {
                     console.log("Document data found:", docSnap.data());
                     data = docSnap.data();
-                    // 確保舊數據結構兼容 (簡化處理，實際可能需要更複雜的遷移)
-                    if (!data.itinerary || data.itinerary.length === 0) {
-                        data.itinerary = defaultTripData.itinerary;
-                    }
-                    if (!data.budget || !data.budget.daily || data.budget.daily.length === 0) {
-                         data.budget = defaultTripData.budget;
+                    // 確保數據結構兼容 (如果舊數據沒有 expenses，則初始化)
+                    if (data.budget && data.budget.daily) {
+                        data.budget.daily = data.budget.daily.map(day => ({
+                            ...day,
+                            expenses: day.expenses || [] // 確保 expenses 存在
+                        }));
                     }
                 } else {
                     console.log("No document found, setting initial data.");
@@ -278,7 +280,7 @@
             }
         };
 
-        // --- 行程日期處理函數 ---
+        // --- 行程日期處理函數 (保持不變) ---
 
         /**
          * 將 MM/DD 格式的日期和 YYYY 年份組合為 DD/MM/YYYY 格式用於顯示。
@@ -343,8 +345,7 @@
             const newBudgetEntry = {
                 date: newDateMMDD, // MM/DD
                 budget: 1000,
-                spent: 0,
-                expenses: []
+                expenses: [] // 確保新增時有 expenses 數組
             };
 
             // 4. 更新數據
@@ -366,18 +367,18 @@
             renderApp();
         }
 
-        // --- LLM API 呼叫：獲取即時匯率 (保持不變) ---
+        // --- LLM API 呼叫：獲取即時匯率 ---
         async function fetchExchangeRate() {
             if (!state.tripData) return; // 確保有數據才執行
 
             if (state.exchangeAttempts >= 3) {
-                state.exchangeRate = { rate: 170.00, source: 'Mock (Failed to fetch)' };
-                if (state.currentTab === 'guide') renderApp();
+                state.exchangeRate = { rate: 0.0, source: 'Mock (Failed to fetch)' }; // 失敗後也設置 rate 為 0
+                if (state.currentTab === 'guide' || state.currentTab === 'budget') renderApp();
                 return;
             }
             state.exchangeAttempts++;
             state.exchangeRate = { rate: 0.0, source: 'Loading...' };
-            if (state.currentTab === 'guide') renderApp(); // 重新渲染 loading 狀態
+            if (state.currentTab === 'guide' || state.currentTab === 'budget') renderApp(); // 重新渲染 loading 狀態
 
             const base = state.tripData.budget.baseCurrency || 'HKD';
             const target = state.tripData.budget.targetCurrency || 'KRW';
@@ -410,7 +411,7 @@
                     if (!isNaN(rate) && rate > 0) {
                         state.exchangeRate = { rate, source: source.substring(0, 30) + (source.length > 30 ? '...' : '') };
                     } else {
-                        throw new Error("Invalid rate format received.");
+                        throw new Error("Invalid rate format received or rate is zero.");
                     }
                 } else {
                     throw new Error("Unexpected API response format.");
@@ -422,16 +423,17 @@
                 await new Promise(resolve => setTimeout(resolve, 1000 * state.exchangeAttempts));
                 fetchExchangeRate(); // Retry
             }
-            if (state.currentTab === 'guide') renderApp();
+            // 在 Guide 或 Budget 頁面更新時才重新渲染
+            if (state.currentTab === 'guide' || state.currentTab === 'budget') renderApp();
         }
 
-        // --- 應用程式渲染與互動函數 (保持不變，但請注意 renderApp 的調用) ---
+        // --- 應用程式渲染與互動函數 ---
 
         function switchTab(tab) {
             state.currentTab = tab;
             renderApp();
-            if (tab === 'guide') {
-                fetchExchangeRate(); // 切換到 Guide 頁時才重新獲取匯率
+            if (tab === 'guide' || tab === 'budget') {
+                fetchExchangeRate(); 
             }
         }
         
@@ -449,19 +451,12 @@
                 case '酒店': return 'bg-red-100 text-red-700';
                 case '交通': return 'bg-gray-200 text-gray-600';
                 case '甜品': return 'bg-purple-100 text-purple-700';
+                case '其他': return 'bg-gray-400/20 text-gray-700';
                 default: return 'bg-gray-100 text-gray-500';
             }
         }
-
-        function getTagStyle(tag) {
-             switch (tag) {
-                case '必吃': return 'bg-accent-red text-white';
-                case '必買': return 'bg-fuji-blue text-white';
-                case '必拍': return 'bg-accent-yellow text-gray-800';
-                default: return 'bg-gray-500 text-white';
-            }
-        }
-
+        
+        // --- 預算編輯 Modal ---
         function openEditBudgetModal() {
             if (!state.tripData) return;
             const currentDay = state.tripData.budget.daily[state.currentDayIndex];
@@ -487,7 +482,6 @@
             const newTotalBudget = parseFloat(totalBudgetInput);
 
             if (isNaN(newDailyBudget) || isNaN(newTotalBudget) || newDailyBudget <= 0 || newTotalBudget <= 0) {
-                // 使用簡單的 modal 替代 alert
                 const messageBox = document.getElementById('message-box');
                 messageBox.innerHTML = `<div class="bg-accent-red text-snow-white p-3 rounded-lg shadow-md">請輸入有效的預算金額。</div>`;
                 setTimeout(() => messageBox.innerHTML = '', 3000);
@@ -502,7 +496,97 @@
             closeEditBudgetModal();
         }
         
-        // Simpler Edit/Add Itinerary functionality (in-page edit)
+        // --- 新增消費 Modal ---
+        function openAddExpenseModal(dayIndex) {
+            const modal = document.getElementById('add-expense-modal');
+            const baseCurrency = state.tripData.budget.baseCurrency; // HKD
+            const targetCurrency = state.tripData.budget.targetCurrency; // KRW
+            const rate = state.exchangeRate.rate;
+            
+            // 清空並設定預設值
+            document.getElementById('expense-amount').value = '';
+            document.getElementById('expense-notes').value = '';
+            document.getElementById('expense-category').value = '食物';
+            document.getElementById('expense-currency').value = targetCurrency; // 預設為當地貨幣 KRW
+            document.getElementById('modal-day-name').textContent = state.tripData.itinerary[dayIndex].dayName;
+            
+            // ** Bug Fix 2: 更新匯率顯示 **
+            const rateDisplay = rate > 0 ? `${rate.toFixed(2)} ${targetCurrency}` : '載入中...';
+            document.getElementById('modal-exchange-rate').textContent = `1 ${baseCurrency} ≈ ${rateDisplay}`;
+            
+            // 將 currentDayIndex 暫存到按鈕上
+            document.getElementById('save-expense-btn').setAttribute('data-day-index', dayIndex);
+            
+            modal.classList.remove('hidden');
+        }
+        
+        function closeAddExpenseModal() {
+            document.getElementById('add-expense-modal').classList.add('hidden');
+        }
+        
+        window.saveExpense = () => {
+            const dayIndex = parseInt(document.getElementById('save-expense-btn').getAttribute('data-day-index'));
+            const amountLocal = parseFloat(document.getElementById('expense-amount').value);
+            const currency = document.getElementById('expense-currency').value;
+            const category = document.getElementById('expense-category').value;
+            const notes = document.getElementById('expense-notes').value.trim();
+
+            if (isNaN(amountLocal) || amountLocal <= 0) {
+                const messageBox = document.getElementById('message-box');
+                messageBox.innerHTML = `<div class="bg-accent-red text-snow-white p-3 rounded-lg shadow-md">請輸入有效的消費金額。</div>`;
+                setTimeout(() => messageBox.innerHTML = '', 3000);
+                return;
+            }
+
+            const rate = state.exchangeRate.rate;
+            let amountHKD = 0;
+            const baseCurrency = state.tripData.budget.baseCurrency; // HKD
+            const targetCurrency = state.tripData.budget.targetCurrency; // KRW
+
+            // ** Bug Fix 1: 匯率檢查提前和邏輯修正 **
+            if (currency === targetCurrency && rate <= 0) {
+                 const messageBox = document.getElementById('message-box');
+                 messageBox.innerHTML = `<div class="bg-accent-red text-snow-white p-3 rounded-lg shadow-md">匯率載入失敗 (${rate.toFixed(2)}), 無法準確轉換 ${targetCurrency}。請稍後重試。</div>`;
+                 setTimeout(() => messageBox.innerHTML = '', 4000);
+                 return; // 匯率無效時，立即退出
+            }
+
+            // 換算邏輯 (1 HKD = X KRW)
+            if (currency === targetCurrency) {
+                // KRW -> HKD: 韓圜金額 / (KRW/HKD 匯率) 
+                amountHKD = amountLocal / rate; 
+            } else if (currency === baseCurrency) {
+                // HKD -> HKD: 無需換算
+                amountHKD = amountLocal;
+            } else {
+                // 其他情況 (未預期，暫時視為 HKD)
+                amountHKD = amountLocal;
+            }
+
+            const newExpense = {
+                id: Date.now(), // 唯一ID
+                amountLocal: amountLocal,
+                currency: currency,
+                amountHKD: parseFloat(amountHKD.toFixed(2)), // 限制兩位小數
+                category: category,
+                notes: notes,
+                timestamp: new Date().toISOString()
+            };
+
+            const newTripData = JSON.parse(JSON.stringify(state.tripData));
+            const currentDayBudget = newTripData.budget.daily[dayIndex];
+            
+            // 將新消費加入數組
+            currentDayBudget.expenses.unshift(newExpense); // 新的放最前面
+            
+            window.saveTripData(newTripData);
+            closeAddExpenseModal();
+            // 切換到 Budget 頁面查看
+            switchTab('budget');
+            selectDay(dayIndex);
+        }
+        
+        // --- 行程事件編輯 (保持不變) ---
         function toggleItineraryEditMode(event, dayIndex, eventIndex) {
             const card = event.currentTarget.closest('.itinerary-card');
             const displayElements = card.querySelectorAll('.display-mode');
@@ -527,7 +611,6 @@
 
             } else {
                 // Enter edit mode
-                // 確保其他卡片退出編輯模式
                 document.querySelectorAll('.itinerary-card.editing').forEach(c => {
                     c.classList.remove('editing');
                     c.querySelectorAll('.display-mode').forEach(el => el.classList.remove('hidden'));
@@ -540,6 +623,16 @@
                 editElements.forEach(el => el.classList.remove('hidden'));
             }
         }
+        
+        function getTagStyle(tag) {
+             switch (tag) {
+                case '必吃': return 'bg-accent-red/20 text-accent-red';
+                case '必買': return 'bg-fuji-blue/20 text-fuji-blue';
+                case '必拍': return 'bg-accent-yellow/20 text-accent-yellow';
+                default: return 'bg-gray-200 text-gray-700';
+            }
+        }
+
 
         // --- 渲染各分頁內容 ---
 
@@ -555,6 +648,9 @@
 
             // 格式化 MM/DD 為 DD/MM/YYYY
             const fullDate = (dateMMDD) => formatDateToDisplay(dateMMDD, tripYear);
+            
+            // 計算當日總花費 (從 expenses 數組中計算)
+            const daySpent = dailyBudget.expenses.reduce((sum, exp) => sum + exp.amountHKD, 0);
 
 
             // 1. 每日選擇器 (已移至固定頂部欄，只渲染按鈕)
@@ -580,9 +676,9 @@
 
                     <!-- 每日預算 -->
                     <div class="flex justify-between items-center text-sm font-semibold p-3 bg-warm-gray rounded-lg">
-                        <span class="text-fuji-blue">預算餘額 (${dailyBudget.budget === 0 ? 'N/A' : state.tripData.budget.baseCurrency})：</span>
-                        <span class="${dailyBudget.spent > dailyBudget.budget ? 'text-accent-red' : 'text-accent-green'}">
-                             $${(dailyBudget.budget - dailyBudget.spent).toFixed(0)} / $${dailyBudget.budget.toFixed(0)}
+                        <span class="text-fuji-blue">預算餘額 (${state.tripData.budget.baseCurrency})：</span>
+                        <span class="${daySpent > dailyBudget.budget ? 'text-accent-red' : 'text-accent-green'}">
+                             $${(dailyBudget.budget - daySpent).toFixed(0)} / $${dailyBudget.budget.toFixed(0)}
                         </span>
                         <button onclick="openEditBudgetModal()" class="text-fuji-blue hover:text-accent-red transition-colors ml-2" aria-label="編輯預算">
                             <i data-lucide="edit" class="w-4 h-4"></i>
@@ -591,14 +687,13 @@
                 </div>
             `;
 
-            // 3. 行程事件卡片列表
+            // 3. 行程事件卡片列表 (保持不變)
             const eventsList = currentDay.events.map((event, eventIndex) => {
                 const categoryStyle = getCategoryStyle(event.category);
                 const iconName = categoryIcons[event.category] || 'map-pin';
                 const hasAddress = event.address && event.address.includes('서울');
                 const naverMapUrl = hasAddress ? getNaverMapUrl(event.address) : '#';
                 
-                // 模擬停車和加油資訊 (只有交通和購物/景點會顯示)
                 let carInfo = '';
                 if (event.category === '購物' || event.category === '景點') {
                     carInfo = `
@@ -621,19 +716,16 @@
                     <div class="itinerary-card m-4 p-4 bg-snow-white shadow-xl rounded-2xl card-japanese transition-all duration-300 transform hover:scale-[1.01] border-l-4 border-fuji-blue/50">
                         <div class="flex justify-between items-start mb-3">
                             <div class="flex items-center">
-                                <!-- UPDATED BLOCK: 加上日期 -->
                                 <div class="flex flex-col items-start mr-3">
                                     <span class="text-2xl font-black text-fuji-blue">${event.time}</span>
                                     <span class="text-xs text-gray-500 mt-[-2px]">${eventDay}/${eventMonth}</span>
                                 </div>
-                                <!-- END UPDATED BLOCK -->
                                 <span class="px-3 py-1 text-xs font-bold rounded-full ${categoryStyle}">
                                     <i data-lucide="${iconName}" class="w-3 h-3 inline mr-1"></i>
                                     ${event.category}
                                 </span>
                             </div>
-                            <!-- 編輯/保存按鈕 -->
-                             <button onclick="toggleItineraryEditMode(event, ${state.currentDayIndex}, ${eventIndex})" 
+                            <button onclick="toggleItineraryEditMode(event, ${state.currentDayIndex}, ${eventIndex})" 
                                 class="text-fuji-blue hover:text-accent-red transition-colors edit-toggle-btn" 
                                 aria-label="編輯行程">
                                 <i data-lucide="edit-3" class="w-5 h-5 display-mode"></i>
@@ -641,26 +733,20 @@
                             </button>
                         </div>
                         
-                        <!-- 景點名稱 (顯示模式) -->
                         <h3 class="text-lg font-bold text-gray-800 display-mode">${event.name}</h3>
-                        <!-- 景點名稱 (編輯模式) -->
                         <input type="text" name="name" value="${event.name}" class="edit-mode hidden w-full p-2 border border-fuji-blue/50 rounded-md text-lg font-bold mb-2">
 
                         <p class="text-sm text-gray-500 mb-3 display-mode">${event.address}</p>
                         
-                        <!-- 描述/備註 (顯示模式) -->
                         <p class="text-base mb-3 display-mode">${event.notes}</p>
-                        <!-- 描述/備註 (編輯模式) -->
                         <textarea name="notes" class="edit-mode hidden w-full p-2 border border-fuji-blue/50 rounded-md text-sm mb-3" rows="2">${event.notes}</textarea>
 
-                        <!-- 標籤 -->
                         <div class="flex flex-wrap space-x-2 mb-3">
                             ${event.tags.map(tag => `
                                 <span class="px-3 py-1 text-xs font-semibold rounded-full shadow ${getTagStyle(tag)}">${tag}</span>
                             `).join('')}
                         </div>
                         
-                        <!-- 拍照小技巧 -->
                         ${event.photoTip ? `
                             <div class="mt-3 p-3 bg-fuji-blue/10 border-l-4 border-fuji-blue rounded-r-lg">
                                 <p class="text-xs font-bold text-fuji-blue mb-1">📸 拍照小技巧</p>
@@ -668,10 +754,8 @@
                             </div>
                         ` : ''}
 
-                        <!-- 停車/加油資訊 -->
                         ${carInfo}
 
-                        <!-- 導航與旅記 -->
                         <div class="mt-4 pt-3 border-t border-warm-gray flex justify-between space-x-2">
                             <a href="${naverMapUrl}" target="_blank" class="${hasAddress ? 'bg-fuji-blue hover:bg-fuji-blue/80' : 'bg-gray-300 cursor-not-allowed'} text-snow-white text-sm py-2 px-4 rounded-full font-bold transition-colors flex items-center w-1/2 justify-center">
                                 <i data-lucide="map" class="w-4 h-4 mr-2"></i> Naver Map
@@ -684,7 +768,7 @@
                 `;
             }).join('');
 
-            // 4. 建議穿著和雪況
+            // 4. 建議穿著和雪況 (保持不變)
             const dressCodeCard = `
                  <div class="m-4 p-4 bg-fuji-blue/10 shadow-lg rounded-xl card-japanese border-l-4 border-accent-red">
                     <h4 class="text-md font-bold text-accent-red mb-2"><i data-lucide="shirt" class="w-4 h-4 inline mr-1"></i> 建議穿著與雪況</h4>
@@ -692,7 +776,7 @@
                 </div>
             `;
             
-             // 5. 新增行程按鈕
+             // 5. 新增行程按鈕 (保持不變)
             const addEventButton = `
                  <div class="m-4 pt-2 pb-20 text-center">
                     <button class="bg-accent-green hover:bg-accent-green/90 text-snow-white text-md py-3 px-6 rounded-full font-bold shadow-lg transition-transform transform hover:scale-105" onclick="alert('新增行程功能待實現！')">
@@ -710,7 +794,6 @@
 
             const f = state.tripData.flights;
 
-            // 1. 航班狀況卡片
             const flightCard = (type, data) => `
                 <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-l-4 ${type === 'outbound' ? 'border-accent-red' : 'border-fuji-blue'}">
                     <div class="flex items-center justify-between mb-2">
@@ -728,13 +811,15 @@
                     </button>
                 </div>
             `;
-
-            // 2. 即時匯率卡片
+            
+            // Fix: 匯率為 0 時顯示載入中
+            const rateDisplay = state.exchangeRate.rate === 0.0 ? state.exchangeRate.source : state.exchangeRate.rate.toFixed(2);
+            
             const exchangeRateCard = `
                 <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-t-4 border-accent-yellow">
                     <h3 class="text-lg font-bold text-gray-700 mb-2 flex items-center"><i data-lucide="dollar-sign" class="w-5 h-5 mr-2 text-accent-yellow"></i> 即時對換率</h3>
                     <div class="text-3xl font-extrabold text-fuji-blue">
-                        1 ${state.tripData.budget.baseCurrency} = ${state.exchangeRate.rate === 0.0 ? state.exchangeRate.source : state.exchangeRate.rate.toFixed(2)} ${state.tripData.budget.targetCurrency}
+                        1 ${state.tripData.budget.baseCurrency} = ${rateDisplay} ${state.tripData.budget.targetCurrency}
                     </div>
                     <p class="text-xs text-gray-500 mt-2">
                         資料來源: ${state.exchangeRate.source}
@@ -745,7 +830,6 @@
                 </div>
             `;
 
-            // 3. 旅遊總覽 (地圖連結)
             const mapLinkCard = `
                 <div class="p-4 rounded-xl bg-snow-white shadow-lg mb-4 border-r-4 border-accent-green">
                     <h3 class="text-lg font-bold text-gray-700 mb-2 flex items-center"><i data-lucide="map-pin" class="w-5 h-5 mr-2 text-accent-green"></i> 韓國首爾地圖</h3>
@@ -781,9 +865,15 @@
 
             const budgetData = state.tripData.budget;
             const dailyData = budgetData.daily;
-            const totalSpent = dailyData.reduce((acc, day) => acc + day.spent, 0);
+            const currency = budgetData.baseCurrency; // HKD
+
+            // 計算總花費 (從所有 expenses 的 amountHKD 總和)
+            const totalSpent = dailyData.reduce((acc, day) => {
+                const daySpent = day.expenses.reduce((sum, exp) => sum + exp.amountHKD, 0);
+                return acc + daySpent;
+            }, 0);
+            
             const remaining = budgetData.totalBudget - totalSpent;
-            const currency = budgetData.baseCurrency;
 
             // 總預算卡片
             const totalCard = `
@@ -793,53 +883,89 @@
                     <p class="text-sm">餘額 / 總預算：$${totalSpent.toFixed(0)} / $${budgetData.totalBudget.toFixed(0)} ${currency}</p>
                     <div class="w-full bg-fuji-blue/50 rounded-full h-2.5 mt-2">
                         <div class="h-2.5 rounded-full ${remaining < 0 ? 'bg-accent-red' : 'bg-accent-green'}" 
-                             style="width: ${(totalSpent / budgetData.totalBudget * 100).toFixed(1)}%">
+                             style="width: ${(totalSpent / budgetData.totalBudget * 100).toFixed(1) > 100 ? '100' : (totalSpent / budgetData.totalBudget * 100).toFixed(1)}%">
                         </div>
                     </div>
                 </div>
             `;
-
-            // 每日消費紀錄
+            
+            // 每日清單 (包含新增消費按鈕和詳細列表)
             const dailyList = `
                 <div class="m-4 mt-6">
                     <h2 class="text-xl font-bold text-gray-700 mb-3">每日消費概覽</h2>
                     ${dailyData.map((day, index) => {
-                        const dailyRemaining = day.budget - day.spent;
-                        // 獲取年份
-                        const tripYear = state.tripData.dates.substring(0, 4);
-                        const [month, dayNum] = day.date.split('/');
-                        const formattedDate = formatDateToDisplay(day.date, tripYear); // DD/MM/YYYY
+                        // 重新計算當日花費
+                        const daySpent = day.expenses.reduce((sum, exp) => sum + exp.amountHKD, 0);
+                        const dailyRemaining = day.budget - daySpent;
                         
+                        const tripYear = state.tripData.dates.substring(0, 4);
+                        const formattedDate = formatDateToDisplay(day.date, tripYear);
+                        const dayName = state.tripData.itinerary[index].dayName;
+                        const isCurrentDay = index === state.currentDayIndex;
+                        
+                        // 消費紀錄列表
+                        const expenseDetail = day.expenses.map(exp => {
+                             const iconName = categoryIcons[exp.category] || 'map-pin';
+                             return `
+                                <div class="flex justify-between items-center text-xs py-2 border-b border-warm-gray last:border-b-0">
+                                    <div class="flex items-center space-x-2 w-1/2">
+                                        <i data-lucide="${iconName}" class="w-3 h-3 text-fuji-blue"></i>
+                                        <span class="truncate">${exp.notes || exp.category}</span>
+                                    </div>
+                                    <div class="text-right font-semibold w-1/4 text-gray-700">
+                                        ${exp.amountLocal.toFixed(0)} ${exp.currency}
+                                    </div>
+                                    <div class="text-right font-bold w-1/4 text-gray-800">
+                                        $${exp.amountHKD.toFixed(1)} ${currency}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+
                         return `
-                             <div class="flex justify-between items-center p-4 mb-3 bg-snow-white shadow-md rounded-xl border-l-4 ${dailyRemaining < 0 ? 'border-accent-red' : 'border-accent-green'}">
-                                <div class="flex-1">
-                                    <h4 class="font-bold text-gray-800">${formattedDate} (${state.tripData.itinerary[index].dayName})</h4>
-                                    <p class="text-xs text-gray-500">預算: $${day.budget.toFixed(0)} ${currency}</p>
+                             <div class="mb-5 bg-snow-white shadow-xl rounded-2xl border-l-4 ${dailyRemaining < 0 ? 'border-accent-red' : 'border-fuji-blue'} ${isCurrentDay ? 'border-4 border-accent-yellow/50' : ''}">
+                                <div class="p-4">
+                                    <div class="flex justify-between items-center">
+                                        <div class="flex-1">
+                                            <h4 class="font-bold text-lg text-gray-800">${formattedDate} (${dayName})</h4>
+                                            <p class="text-sm text-gray-500">預算: $${day.budget.toFixed(0)} ${currency}</p>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-lg font-extrabold ${dailyRemaining < 0 ? 'text-accent-red' : 'text-accent-green'}">$${dailyRemaining.toFixed(0)}</p>
+                                            <p class="text-xs text-gray-500">已花費: $${daySpent.toFixed(0)} ${currency}</p>
+                                        </div>
+                                        <button onclick="selectDay(${index})" class="ml-4 text-fuji-blue hover:text-accent-red transition-colors" aria-label="切換到此日子">
+                                            <i data-lucide="${isCurrentDay ? 'minus-circle' : 'plus-circle'}" class="w-5 h-5"></i>
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- 只有選中當日才顯示新增消費按鈕和詳細清單 -->
+                                    <div class="${isCurrentDay ? 'block' : 'hidden'} mt-4">
+                                        <button onclick="openAddExpenseModal(${index})" class="w-full bg-accent-yellow hover:bg-accent-yellow/80 text-gray-900 text-sm py-2 px-4 rounded-full font-bold shadow-md transition-colors flex items-center justify-center mb-4">
+                                            <i data-lucide="wallet" class="w-4 h-4 inline mr-2"></i>
+                                            新增今日消費 (${state.tripData.budget.targetCurrency})
+                                        </button>
+                                        
+                                        <!-- 消費紀錄詳細列表 -->
+                                        ${day.expenses.length > 0 ? `
+                                            <div class="mt-4 p-3 bg-warm-gray rounded-lg">
+                                                <div class="flex justify-between items-center text-xs font-bold text-gray-500 mb-2 border-b border-gray-300 pb-1">
+                                                    <span class="w-1/2">項目</span>
+                                                    <span class="w-1/4 text-right">${state.tripData.budget.targetCurrency}</span>
+                                                    <span class="w-1/4 text-right">${currency}</span>
+                                                </div>
+                                                ${expenseDetail}
+                                            </div>
+                                        ` : '<p class="text-sm text-gray-500 text-center py-2">本日無消費紀錄。</p>'}
+                                    </div>
                                 </div>
-                                <div class="text-right">
-                                    <p class="text-lg font-extrabold ${dailyRemaining < 0 ? 'text-accent-red' : 'text-accent-green'}">$${dailyRemaining.toFixed(0)}</p>
-                                    <p class="text-xs text-gray-500">已花費: $${day.spent.toFixed(0)} ${currency}</p>
-                                </div>
-                                <button onclick="selectDay(${index}); switchTab('itinerary');" class="ml-4 text-fuji-blue hover:text-accent-red transition-colors" aria-label="查看行程">
-                                    <i data-lucide="eye" class="w-5 h-5"></i>
-                                </button>
                             </div>
                         `;
                     }).join('')}
                 </div>
             `;
             
-            // 新增消費按鈕
-             const addExpenseButton = `
-                 <div class="m-4 pt-2 pb-20 text-center">
-                    <button class="bg-fuji-blue hover:bg-fuji-blue/90 text-snow-white text-md py-3 px-6 rounded-full font-bold shadow-lg transition-transform transform hover:scale-105" onclick="alert('新增消費紀錄功能待實現！')">
-                        <i data-lucide="wallet" class="w-5 h-5 inline mr-2"></i> 新增消費紀錄
-                    </button>
-                </div>
-            `;
-
-
-            return totalCard + dailyList + addExpenseButton;
+            return totalCard + dailyList;
         }
 
 
@@ -848,7 +974,6 @@
             const header = document.getElementById('app-header');
             const dayBar = document.getElementById('day-bar');
 
-            // 渲染 Header
             if (state.tripData) {
                 header.innerHTML = `
                     <div class="flex flex-col text-center pt-2 pb-1">
@@ -857,7 +982,6 @@
                     </div>
                 `;
             } else {
-                 // Fallback header
                  header.innerHTML = `
                     <div class="flex flex-col text-center pt-2 pb-1">
                         <h1 class="text-xl font-bold text-fuji-blue">首爾聖誕旅行 (錯誤)</h1>
@@ -867,12 +991,12 @@
             }
             
             // 渲染 Day Bar
-            if (state.currentTab === 'itinerary' && state.tripData) {
+            if (state.currentTab === 'itinerary' || state.currentTab === 'budget') {
                 const { daySelectorButtons } = renderItinerary();
                 dayBar.classList.remove('hidden');
                 document.getElementById('day-selector-buttons').innerHTML = daySelectorButtons;
                 
-                // *** 滾動到當前選中的 Day，改善使用者體驗 ***
+                // 滾動到當前選中的 Day
                 const currentDayButton = document.querySelector('.bg-fuji-blue.text-snow-white');
                 if (currentDayButton) {
                     currentDayButton.parentElement.scrollTo({
@@ -880,7 +1004,6 @@
                         behavior: 'smooth'
                     });
                 }
-                // *** END 滾動優化 ***
 
 
             } else {
@@ -892,7 +1015,6 @@
             let content = '';
             switch (state.currentTab) {
                 case 'itinerary':
-                    // 只有 content 部分
                     content = renderItinerary().content; 
                     break;
                 case 'guide':
@@ -911,11 +1033,9 @@
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 const tab = btn.getAttribute('data-tab');
                 if (tab === state.currentTab) {
-                    // 實色/高亮狀態
                     btn.classList.add('text-fuji-blue', 'font-bold', 'bg-snow-white', 'shadow-2xl', 'scale-105');
                     btn.classList.remove('text-warm-gray', 'hover:text-snow-white/80', 'opacity-70');
                 } else {
-                    // 底部導覽條的底色是 fuji-blue
                     btn.classList.remove('text-fuji-blue', 'font-bold', 'bg-snow-white', 'shadow-2xl', 'scale-105');
                     btn.classList.add('text-warm-gray', 'hover:text-snow-white/80', 'opacity-70');
                 }
@@ -923,10 +1043,7 @@
         }
 
         window.onload = () => {
-             // 1. 立即渲染預設數據 (state.tripData 在全域已設定)
              renderApp();
-             
-             // 2. Firebase 初始化 (在 module script 中自動開始)
         };
 
         // 將重要函數暴露給全域以供 HTML 內聯事件使用
@@ -937,6 +1054,8 @@
         window.saveBudget = saveBudget;
         window.toggleItineraryEditMode = toggleItineraryEditMode;
         window.fetchExchangeRate = fetchExchangeRate;
+        window.openAddExpenseModal = openAddExpenseModal;
+        window.closeAddExpenseModal = closeAddExpenseModal;
     </script>
 
     <style>
@@ -988,7 +1107,6 @@
     <div id="day-bar" class="fixed top-[56px] left-0 right-0 max-w-md mx-auto z-10 bg-warm-gray/90 backdrop-blur-sm shadow-md">
         <div class="flex items-center p-2">
             <!-- Day Selector Buttons (Scrollable) -->
-            <!-- FIX: 使用 flex-1 min-w-0 確保它在 flex 容器中可以正確滾動且佔用全部剩餘空間 -->
             <div id="day-selector-buttons" class="flex overflow-x-auto flex-1 min-w-0 pb-1">
                 <!-- Buttons rendered here by JS -->
             </div>
@@ -1052,6 +1170,55 @@
             </div>
         </div>
     </div>
+    
+    <!-- 新增消費 Modal -->
+    <div id="add-expense-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-75 z-40 flex items-center justify-center hidden">
+        <div class="bg-snow-white p-6 rounded-2xl shadow-2xl w-11/12 max-w-sm transform scale-100 transition-transform card-japanese">
+            <h3 class="text-xl font-bold text-fuji-blue mb-2">新增消費 - <span id="modal-day-name"></span></h3>
+            <!-- Bug Fix 2: 新增 ID 並讓 JS 在 openAddExpenseModal 中更新內容 -->
+            <p id="modal-exchange-rate" class="text-xs text-gray-500 mb-4">匯率: 1 HKD ≈ 載入中...</p>
+            
+            <div class="mb-4">
+                <label for="expense-amount" class="block text-sm font-medium text-gray-700 mb-1">金額</label>
+                <div class="flex">
+                    <input type="number" id="expense-amount" class="flex-1 p-3 border border-gray-300 rounded-l-lg focus:ring-fuji-blue focus:border-fuji-blue transition" min="1" />
+                    <select id="expense-currency" class="p-3 border border-gray-300 border-l-0 rounded-r-lg bg-warm-gray font-semibold">
+                        <option value="KRW">KRW (韓圜)</option>
+                        <option value="HKD">HKD (港幣)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label for="expense-category" class="block text-sm font-medium text-gray-700 mb-1">類別</label>
+                <select id="expense-category" class="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-fuji-blue focus:border-fuji-blue transition">
+                    <option value="食物">食物</option>
+                    <option value="購物">購物</option>
+                    <option value="交通">交通</option>
+                    <option value="景點">景點</option>
+                    <option value="活動">活動</option>
+                    <option value="酒店">酒店</option>
+                    <option value="甜品">甜品</option>
+                    <option value="其他">其他</option>
+                </select>
+            </div>
+            
+            <div class="mb-6">
+                <label for="expense-notes" class="block text-sm font-medium text-gray-700 mb-1">備註 (例如: 店名)</label>
+                <textarea id="expense-notes" rows="2" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-fuji-blue focus:border-fuji-blue transition" placeholder="午餐: 神仙雪濃湯"></textarea>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeAddExpenseModal()" class="px-4 py-2 text-gray-600 bg-warm-gray rounded-full font-semibold hover:bg-gray-200 transition">
+                    取消
+                </button>
+                <button id="save-expense-btn" onclick="saveExpense()" class="px-4 py-2 text-snow-white bg-accent-red rounded-full font-semibold hover:bg-accent-red/80 transition" data-day-index="0">
+                    儲存消費
+                </button>
+            </div>
+        </div>
+    </div>
+
 
 </body>
 </html>
