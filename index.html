@@ -4,13 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>首爾聖誕旅行</title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Font: Zen Maru Gothic (清楚易讀的日系字體) -->
     <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
-    <!-- Lucide Icons (可愛風格圖標) -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Firebase SDK (必須載入) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -111,19 +107,18 @@
             }
         }
 
-        // --- 預設行程數據 ---
-        // 保持與上一次一致
+        // --- 預設行程數據 (已更新) ---
         const initialItinerary = [
             { date: "12/25", dayName: "Day 1", mainArea: "安國, 弘大, 延南洞, 明洞", weather: "8°C, 晴 (API載入中)",
                 dressCode: "建議: 極厚外套、圍巾、手套 (Heavy coat, scarf, gloves). 雪況: 無積雪 (No snow).",
                 events: [
-                    { time: "08:00", category: "食物", name: "Dotori Garden (도토리가든)", address: "서울 종로구 북촌로 4길 20", notes: "必吃：招牌牛角包", tags: ["必吃"], naverId: "12345" },
-                    { time: "10:30", category: "購物", name: "ZERO SPACE（제로스페이스）", address: "서울 종로구 북촌로5가길 16", notes: "安國逛街順路", tags: ["必買"], naverId: "12346" },
-                    { time: "12:30", category: "交通", name: "安國 → 弘大", address: "地鐵", notes: "地鐵18分鐘", tags: [], naverId: "" },
+                    { time: "08:00", category: "食物", name: "Dotori Garden (도토리가든)", address: "서울 종로구 북촌로 4길 20", notes: "必吃：招牌牛角包", tags: ["必吃", "必拍"], naverId: "12345" },
+                    { time: "09:30", category: "購物", name: "安國散步 - ZERO SPACE/Tamburins", address: "서울 종로구 북촌로5가길 16 (ZERO SPACE)", notes: "Object, Sowol, OINU 等小店散步", tags: ["必買"], naverId: "12346" },
+                    { time: "12:00", category: "交通", name: "安國 → 弘大", address: "地鐵", notes: "地鐵18分鐘", tags: [], naverId: "" },
                     { time: "13:00", category: "食物", name: "Gop Mapo 烤肥腸 (곱마포)", address: "서울 마포구 독막로7길 51", notes: "午餐", tags: ["必吃"], naverId: "12347" },
-                    { time: "15:00", category: "食物", name: "Artist Bakery 弘大 (아티스트 베이커리)", address: "서울 마포구 동교로 251-3", notes: "下午茶，必拍可頌", tags: ["必拍"], naverId: "12348" },
-                    { time: "17:00", category: "景點", name: "延南洞", address: "弘大旁", notes: "散步、小店、甜餅", tags: [], naverId: "" },
-                    { time: "19:30", category: "食物", name: "🦀烏達里家（醬蟹）(오다리집 간장게장)", address: "서울 중구 명동8나길 28 2–3층", notes: "晚餐，醬蟹定食", tags: ["必吃"], naverId: "12349" },
+                    { time: "15:00", category: "甜品", name: "Artist Bakery 弘大 (아티스트 베이커리)", address: "서울 마포구 동교로 251-3", notes: "下午茶，必拍可頌", tags: ["必拍"], naverId: "12348" },
+                    { time: "17:00", category: "景點", name: "延南洞散步 & 小食", address: "弘大旁 (훈훈호떡, HIPPO Coffee)", notes: "散步、小店、甜餅", tags: ["必吃"], naverId: "" },
+                    { time: "19:30", category: "食物", name: "🦀 烏達里家（醬蟹）(오다리집 간장게장)", address: "서울 중구 명동8나길 28 2–3층", notes: "晚餐，醬蟹定食", tags: ["必吃"], naverId: "12349" },
                     { time: "21:00", category: "景點", name: "明洞聖誕燈飾（明洞聖堂）", address: "서울 중구 명동길 74", notes: "必拍燈飾！", photoTip: "使用人像模式拍攝，背景虛化更夢幻。", tags: ["必拍"], naverId: "12350" },
                 ]
             },
@@ -134,17 +129,17 @@
                     { time: "11:00", category: "購物", name: "明洞購物區 (명동거리)", address: "서울 중구 명동길 일대", notes: "掃貨時間", tags: ["必買"], naverId: "22346" },
                     { time: "13:00", category: "食物", name: "韓牛一條街（退溪路）(퇴계로 한우골목)", address: "서울 중구 퇴계로 180길 일대", notes: "午餐", tags: ["必吃"], naverId: "22347" },
                     { time: "15:00", category: "購物", name: "南大門市場 (남대문시장)", address: "서울 중구 남대문시장4길 21", notes: "零食、手信", tags: ["必買"], naverId: "22348" },
-                    { time: "17:00", category: "購物", name: "Doota Mall (두타몰)", address: "서울 중구 장충단로 275", notes: "No Brand 掃貨", tags: ["必買"], naverId: "22349" },
-                    { time: "18:00", category: "甜品", name: "Scooper Gelato", address: "두타몰 地下層", notes: "開心果 AFFOGATO", tags: ["必吃"], naverId: "22350" },
+                    { time: "17:00", category: "購物", name: "Doota Mall (두타몰) + No Brand", address: "서울 중구 장충단로 275", notes: "No Brand 掃貨", tags: ["必買"], naverId: "22349" },
+                    { time: "18:00", category: "甜品", name: "Scooper Gelato", address: "두타몰 內", notes: "開心果 AFFOGATO", tags: ["必吃"], naverId: "22350" },
                     { time: "20:00", category: "食物", name: "友誼辣雞爪 (우정닭발)", address: "서울 중구 퇴계로 421", notes: "晚餐，新堂 닭발 골목", tags: ["必吃"], naverId: "22351" },
                 ]
             },
             { date: "12/27", dayName: "Day 3", mainArea: "安國 Café, 益善洞, 乙支路", weather: "10°C, 多雲 (API載入中)",
                 dressCode: "建議: 多層次穿搭，室內會很暖 (Layers). 雪況: 無 (None).",
                 events: [
-                    { time: "09:30", category: "食物", name: "Cafe Layered (安國) (카페 레이어드)", address: "서울 종로구 북촌로 6", notes: "早餐，打卡咖啡廳", tags: ["必拍"], naverId: "32345" },
-                    { time: "13:00", category: "食物", name: "Nakwonjang（益善洞）(낙원장)", address: "서울 종로구 수표로28길 33", notes: "午餐", tags: ["必吃"], naverId: "32346" },
-                    { time: "15:00", category: "景點", name: "益善洞韓屋街", address: "서울 종로구 수표로28길 일대", notes: "行小店／打卡", tags: ["必拍"], naverId: "32347" },
+                    { time: "09:30", category: "甜品", name: "Cafe Layered (安國) (카페 레이어드)", address: "서울 종로구 북촌로 6", notes: "早餐，打卡咖啡廳", tags: ["必拍"], naverId: "32345" },
+                    { time: "13:00", category: "食物", name: "Nakwonjang（益善洞）(낙원장)", address: "서울 종로구 수표로28길 33", notes: "午餐，現代韓食", tags: ["必吃"], naverId: "32346" },
+                    { time: "15:00", category: "景點", name: "益善洞韓屋街散步", address: "서울 종로구 수표로28길 일대", notes: "行小店／打卡", tags: ["必拍"], naverId: "32347" },
                     { time: "19:00", category: "食物", name: "水芹菜烤豬肉 (돌판 수미나물 삼겹살)", address: "서울 중구 수표로 48-1", notes: "晚餐，乙支路", tags: ["必吃"], naverId: "32348" },
                     { time: "21:00", category: "活動", name: "飯後自由活動", address: "", notes: "回酒店 / 便利店 / 明洞散步 皆可", tags: [], naverId: "" },
                 ]
@@ -152,10 +147,10 @@
             { date: "12/28", dayName: "Day 4", mainArea: "聖水 ALL DAY, 明洞", weather: "3°C, 雪 (API載入中)",
                 dressCode: "建議: 防水靴、帽子 (Waterproof boots, hat). 雪況: 有機會下雪！(Chance of snow!).",
                 events: [
-                    { time: "08:30", category: "食物", name: "Onion 聖水 (어니언 성수)", address: "서울 성동구 아차산로17길 33", notes: "早餐，打卡咖啡廳", tags: ["必拍"], naverId: "42345" },
-                    { time: "10:30", category: "購物", name: "聖水潮流散步", address: "聖水洞一帶", notes: "Musinsa, ADER ERROR, Tamburins", tags: ["必買"], naverId: "42346" },
+                    { time: "08:30", category: "甜品", name: "Onion 聖水 (어니언 성수)", address: "서울 성동구 아차산로17길 33", notes: "早餐，打卡咖啡廳", tags: ["必拍"], naverId: "42345" },
+                    { time: "10:30", category: "購物", name: "聖水潮流散步 - Musinsa/ADER ERROR/Tamburins", address: "聖水洞一帶 (Musinsa, ADER ERROR, Tamburins)", notes: "全部步行距離短", tags: ["必買"], naverId: "42346" },
                     { time: "13:00", category: "食物", name: "無垢屋 (무쿠우동)", address: "서울 성동구 서울숲2길 28-13", notes: "午餐，烏冬", tags: ["必吃"], naverId: "42347" },
-                    { time: "15:00", category: "甜品", name: "Milky Shop (밀키샵)", address: "서울 성동구 서울숲2길 19-13", notes: "甜品時間", tags: ["必吃", "必拍"], naverId: "42348" },
+                    { time: "15:00", category: "甜品", name: "Blue Elephant & Milky Shop (블루엘레펀트 & 밀키샵)", address: "서울 성동구 서울숲2길 18-8 (Blue Elephant)", notes: "甜品/打卡時間 (Blue Elephant 新增)", tags: ["必吃", "必拍"], naverId: "42348" },
                     { time: "17:00", category: "交通", name: "聖水 → 明洞", address: "地鐵", notes: "20–25分鐘", tags: [], naverId: "" },
                     { time: "19:00", category: "食物", name: "晚餐 (二選一)", address: "", notes: "IDAEJO 排骨湯 或 明洞炸雞", tags: ["必吃"], naverId: "" },
                 ]
@@ -166,7 +161,7 @@
                     { time: "09:00", category: "食物", name: "Egg Drop (明洞) (에그드랍)", address: "서울 중구 명동길 24", notes: "早餐", tags: ["必吃"], naverId: "52345" },
                     { time: "10:30", category: "購物", name: "明洞最後掃貨", address: "서울 중구 명동길 일대", notes: "手信、零食補貨", tags: ["必買"], naverId: "52346" },
                     { time: "13:00", category: "食物", name: "最後午餐：豐川鰻魚 (풍천장어)", address: "서울 중구 명동4길 10", notes: "滋補一下", tags: ["必吃"], naverId: "52347" },
-                    { time: "15:00", category: "交通", name: "回酒店拎行李 → 機場", address: "", notes: "預留充足時間", tags: ["必買"], naverId: "" },
+                    { time: "15:00", category: "交通", name: "回酒店取行李 → 機場", address: "", notes: "預留充足時間", tags: [], naverId: "" }, // 移除 '必買' 標籤
                 ]
             }
         ];
@@ -678,13 +673,11 @@
                     <h2 class="text-xl font-bold text-fuji-blue mb-2">${currentDay.dayName}：${currentDay.mainArea}</h2>
                     <p class="text-sm text-gray-500 mb-4">${fullDate(currentDay.date)}</p>
                     
-                    <!-- 每日天氣 -->
                     <div class="flex items-center space-x-2 text-md text-gray-700 mb-3">
                         <i data-lucide="${getWeatherIcon(currentDay.weather)}" class="w-5 h-5 text-accent-yellow"></i>
                         <span>即時天氣：${currentDay.weather}</span>
                     </div>
 
-                    <!-- 每日預算 -->
                     <div class="flex justify-between items-center text-sm font-semibold p-3 bg-warm-gray rounded-lg">
                         <span class="text-fuji-blue">預算餘額 (${state.tripData.budget.baseCurrency})：</span>
                         <span class="${daySpent > dailyBudget.budget ? 'text-accent-red' : 'text-accent-green'}">
@@ -992,14 +985,12 @@
                                         </button>
                                     </div>
                                     
-                                    <!-- 只有選中當日才顯示新增消費按鈕和詳細清單 -->
                                     <div class="${isCurrentDay ? 'block' : 'hidden'} mt-4">
                                         <button onclick="openAddExpenseModal(${index})" class="w-full bg-accent-yellow hover:bg-accent-yellow/80 text-gray-900 text-sm py-2 px-4 rounded-full font-bold shadow-md transition-colors flex items-center justify-center mb-4">
                                             <i data-lucide="wallet" class="w-4 h-4 inline mr-2"></i>
                                             新增今日消費 (${state.tripData.budget.targetCurrency})
                                         </button>
                                         
-                                        <!-- 消費紀錄詳細列表 -->
                                         ${day.expenses.length > 0 ? `
                                             <div class="mt-4 p-3 bg-warm-gray rounded-lg">
                                                 <div class="flex justify-between items-center text-xs font-bold text-gray-500 mb-2 border-b border-gray-300 pb-1">
@@ -1145,10 +1136,8 @@
 </head>
 
 <body class="min-h-screen">
-    <!-- Header (固定頂部 - Z-20) -->
     <header id="app-header" class="fixed top-0 left-0 w-full bg-snow-white/95 backdrop-blur-sm z-20 shadow-md">
         <div class="max-w-md mx-auto">
-            <!-- Header 內容會在 JS 中設定 -->
             <div class="flex flex-col text-center pt-2 pb-1">
                 <h1 class="text-xl font-bold text-fuji-blue">首爾聖誕旅行</h1>
                 <p class="text-xs text-gray-500">2025/12/25 - 2025/12/29</p>
@@ -1156,15 +1145,11 @@
         </div>
     </header>
 
-    <!-- Day Selector Bar (固定在 Header 下方 - Z-15) -->
     <div id="day-bar" class="fixed top-[56px] left-0 right-0 max-w-md mx-auto z-10 bg-warm-gray/90 backdrop-blur-sm shadow-md">
         <div class="flex items-center p-2">
-            <!-- Day Selector Buttons (Scrollable) -->
             <div id="day-selector-buttons" class="flex overflow-x-auto flex-1 min-w-0 pb-1">
-                <!-- Buttons rendered here by JS -->
-            </div>
+                </div>
             
-            <!-- 新增日子按鈕 (Fixed width) -->
             <button onclick="addDay()" class="flex-shrink-0 ml-2 px-3 py-2 text-sm font-bold rounded-full bg-accent-green text-snow-white shadow-md transition-transform hover:scale-105 whitespace-nowrap">
                 <i data-lucide="calendar-plus" class="w-4 h-4 inline mr-1"></i>
                 新增日
@@ -1173,16 +1158,12 @@
     </div>
 
 
-    <!-- Message Box (用於取代 alert) -->
     <div id="message-box" class="fixed top-16 left-0 right-0 z-40 p-4 max-w-sm mx-auto"></div>
 
-    <!-- Main Content Area (調整 pt-24 以避開固定的 Header + Day Bar) -->
     <main id="app-content" class="max-w-md mx-auto pt-24"></main>
 
-    <!-- Bottom Floating Navigation (實色/固底 - Z-20) -->
     <nav class="fixed bottom-0 left-0 w-full bg-fuji-blue shadow-2xl z-20">
         <div class="max-w-md mx-auto flex justify-around p-2">
-            <!-- 預設 'itinerary' 啟用 -->
             <button data-tab="itinerary" onclick="switchTab('itinerary')" class="tab-btn flex flex-col items-center p-2 rounded-full transition-all duration-300">
                 <i data-lucide="calendar-check" class="w-6 h-6"></i>
                 <span class="text-xs">行程</span>
@@ -1198,7 +1179,6 @@
         </div>
     </nav>
     
-    <!-- 預算編輯 Modal -->
     <div id="edit-budget-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-75 z-30 flex items-center justify-center hidden">
         <div class="bg-snow-white p-6 rounded-2xl shadow-2xl w-11/12 max-w-sm transform scale-100 transition-transform card-japanese">
             <h3 class="text-xl font-bold text-fuji-blue mb-4">編輯預算</h3>
@@ -1224,11 +1204,9 @@
         </div>
     </div>
     
-    <!-- 新增消費 Modal -->
     <div id="add-expense-modal" class="modal fixed inset-0 bg-gray-900 bg-opacity-75 z-40 flex items-center justify-center hidden">
         <div class="bg-snow-white p-6 rounded-2xl shadow-2xl w-11/12 max-w-sm transform scale-100 transition-transform card-japanese">
             <h3 class="text-xl font-bold text-fuji-blue mb-2">新增消費 - <span id="modal-day-name"></span></h3>
-            <!-- Bug Fix 2: 新增 ID 並讓 JS 在 openAddExpenseModal 中更新內容 -->
             <p id="modal-exchange-rate" class="text-xs text-gray-500 mb-4">匯率: 1 HKD ≈ 載入中...</p>
             
             <div class="mb-4">
@@ -1275,4 +1253,3 @@
 
 </body>
 </html>
-
